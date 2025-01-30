@@ -17,6 +17,7 @@ from ultralytics import YOLO, SAM
 import torch
 import pandas as pd
 import numpy as np
+np.seterr(over='ignore') # Ignore overflow errors
 
 
 from dash import html, dcc, callback, long_callback
@@ -239,7 +240,7 @@ def process_image(img, active_toggle, models, settings_store, img_path=None):
     
     return img
 
-# Layout
+# Modify the layout section - move analysis plot above image
 app.layout = html.Div([
     # Title
     html.Div(
@@ -253,148 +254,30 @@ app.layout = html.Div([
                 'justifyContent': 'space-between',
                 'alignItems': 'center',
                 'width': '100%',
-                'padding': '10px',
+                'padding': '5px',
                 'backgroundColor': '#f8f9fa',
             }),
 
         ], className='header-title'
     ),
 
-    # Top section - Folder selection and navigation
-    html.Div([
-        # Container for dropdowns
-        html.Div([
-            # Level 1 folder dropdown
-            dcc.Dropdown(
-                id='folder-dropdown-l1',
-                options=[],
-                placeholder='Select main folder',
-                style={
-                    'flex': '1',  # Take up available space
-                    'marginRight': '1rem',  # Using rem instead of px
-                    # 'marginLeft': '1rem',  # Using rem instead of px
-                }
-            ),
-            # Level 2 folder dropdown
-            dcc.Dropdown(
-                id='folder-dropdown-l2',
-                options=[],
-                placeholder='Select subfolder',
-                style={
-                    'flex': '1',
-                    # 'marginRight': '1rem',
-                    'marginLeft': '1rem',
-                }
-            ),
-        ], style={
-            'marginBottom': '1rem', 
-            'display': 'flex', 
-            'alignItems': 'center',
-            # 'gap': '1rem',  # Consistent spacing between items
-            'width': '100%',
-        }),
-        
-        # Navigation and toggle buttons in new row
-        html.Div([
-            # Navigation buttons container
-            html.Div([
-                html.Button('Previous', 
-                    id='prev-button',
-                    style={
-                        'margin': '0.5rem',
-                        'padding': '0.5rem 1rem',
-                        'minWidth': '3rem',
-                        'flex': '1',
-                    },
-                    n_clicks=0),
-                html.Button('Next', 
-                    id='next-button',
-                    style={
-                        'margin': '0.5rem',
-                        'padding': '0.5rem 1rem',
-                        'minWidth': '3rem',
-                        'flex': '1',
-                    },
-                    n_clicks=0),
-            ], style={
-                'display': 'flex',
-                'gap': '0.5rem',
-                'flex': '1',
-            }),
-
-            # Toggle buttons container
-            html.Div([
-                html.Button('Object detection', 
-                    id={'type': 'toggle-button', 'index': 0},
-                    n_clicks=0,
-                    style={
-                        'margin': '0.5rem',
-                        'padding': '0.5rem 1rem',
-                        'minWidth': '8rem',
-                        'flex': '1',
-                    },
-                    className='toggle-button'),
-                html.Button('Segmentation', 
-                    id={'type': 'toggle-button', 'index': 1},
-                    n_clicks=0,
-                    style={
-                        'margin': '0.5rem',
-                        'padding': '0.5rem 1rem',
-                        'minWidth': '8rem',
-                        'flex': '1',
-                    },
-                    className='toggle-button'),
-                html.Button('Water Clarity Index', 
-                    id={'type': 'toggle-button', 'index': 2},
-                    n_clicks=0,
-                    style={
-                        'margin': '0.5rem',
-                        'padding': '0.5rem 1rem',
-                        'minWidth': '8rem',
-                        'flex': '1',
-                    },
-                    className='toggle-button'),
-            ], style={
-                'display': 'flex',
-                'gap': '0.5rem',
-                'flex': '2',
-            }),
-        ], style={
-            'marginBottom': '1rem',
-            'display': 'flex',
-            'flexWrap': 'wrap',
-            'alignItems': 'center',
-            'gap': '1rem',
-            'width': '100%',
-        }),
-    ], style={
-        'padding': '1rem',
-        'backgroundColor': '#f8f9fa',
-        'width': '100%',
-    }),
-    
     # Main content area
     html.Div([
-        # Analysis plot at the top
-        html.Div([
-            dcc.Graph(
-                id='analysis-plot',
-                config={'displayModeBar': True},
-                style={
-                    'height': '30vh',
-                    'width': '100%',
-                    'marginBottom': '20px'
-                }
-            ),
-        ], style={
-            'width': '100%',
-            'marginBottom': '20px'
-        }),
-        
         # Image and Info container
         html.Div([
-            # Left section - Image display
+            # Left section - Analysis plot and Image display
             html.Div([
+                # Analysis plot
+                dcc.Graph(
+                    id='analysis-plot',
+                    config={'displayModeBar': True},
+                    style={
+                        'height': '30vh',
+                        'width': '100%',
+                        'marginBottom': '20px'
+                    }
+                ),
+                # Image display
                 html.Img(
                     id='displayed-image',
                     style={
@@ -409,7 +292,7 @@ app.layout = html.Div([
                 'verticalAlign': 'top'
             }),
             
-            # Right section - Info and settings
+            # Right section - Info, Navigation, and settings
             html.Div([
                 # Image info section
                 html.Div([
@@ -417,48 +300,100 @@ app.layout = html.Div([
                     html.Div(id='image-info'),
                 ]),
                 
+                # Folder selection section
+                html.Div([
+                    html.H4('Folder Selection'),
+                    # Level 1 folder dropdown
+                    html.Div([
+                        html.Label('Main Folder:'),
+                        dcc.Dropdown(
+                            id='folder-dropdown-l1',
+                            options=[],
+                            placeholder='Select main folder',
+                            style={'width': '100%', 'marginBottom': '10px'}
+                        ),
+                    ]),
+                    
+                    # Level 2 folder dropdown
+                    html.Div([
+                        html.Label('Sub Folder:'),
+                        dcc.Dropdown(
+                            id='folder-dropdown-l2',
+                            options=[],
+                            placeholder='Select subfolder',
+                            style={'width': '100%', 'marginBottom': '10px'}
+                        ),
+                    ]),
+                ], style={'marginBottom': '20px'}),
+                
+                # Navigation section
+                html.Div([
+                    html.H4('Navigation'),
+                    # Navigation buttons in a vertical stack
+                    html.Button('Previous', 
+                        id='prev-button',
+                        className='nav-button',
+                        n_clicks=0),
+                    html.Button('Next', 
+                        id='next-button',
+                        className='nav-button',
+                        n_clicks=0),
+                        
+                    html.Button('Object detection', 
+                        id={'type': 'toggle-button', 'index': 0},
+                        className='nav-button toggle-button',
+                        n_clicks=0),
+                    html.Button('Segmentation', 
+                        id={'type': 'toggle-button', 'index': 1},
+                        className='nav-button toggle-button',
+                        n_clicks=0),
+                    html.Button('Water Clarity Index', 
+                        id={'type': 'toggle-button', 'index': 2},
+                        className='nav-button toggle-button',
+                        n_clicks=0),
+                ], style={'marginBottom': '20px'}),
+                
                 # Settings section
                 html.Div([
                     html.H4('Settings'),
                     html.Div(id='settings-container', style={'display': 'none'})
                 ]),
                 
-                # Download section
-                html.Div([
-                    html.Button(
-                        'Save Results', 
-                        id='save-results-button',
-                        disabled=True,
-                        style={
-                            'margin': '1rem 0',
-                            'padding': '0.5rem 1rem',
-                            'backgroundColor': '#6c757d',
-                            'color': 'white',
-                            'border': 'none',
-                            'borderRadius': '0.25rem',
-                            'cursor': 'not-allowed',
-                        }
-                    ),
-                    dcc.Download(id='download-results')
-                ], style={'marginTop': '1rem'}),
-
-                # Add to the layout, just before the Save Results button
+                # Action buttons section
                 html.Div([
                     html.Button(
                         'Set Current as Baseline', 
                         id='set-baseline-button',
                         disabled=True,
                         style={
-                            'margin': '1rem 0',
-                            'padding': '0.5rem 1rem',
-                            'backgroundColor': '#28a745',  # Green color
+                            'width': '100%',
+                            'marginBottom': '10px',
+                            'padding': '5px',
+                            'backgroundColor': '#28a745',
                             'color': 'white',
                             'border': 'none',
                             'borderRadius': '0.25rem',
                             'cursor': 'pointer',
                         }
                     ),
-                ], style={'marginTop': '1rem'}),
+                    html.Button(
+                        'Save Results', 
+                        id='save-results-button',
+                        disabled=True,
+                        style={
+                            'width': '100%',  # Full width
+                            'marginBottom': '10px',
+                            'padding': '8px',  # Match nav-button padding
+                            'backgroundColor': '#6c757d',
+                            'color': 'white',
+                            'border': 'none',
+                            'borderRadius': '4px',  # Match nav-button border-radius
+                            'cursor': 'not-allowed',
+                            'textAlign': 'center',  # Center text
+                        }
+                    ),
+                    dcc.Download(id='download-results')
+                ], style={'marginTop': '20px'}),
             ], style={
                 'width': '18%',
                 'display': 'inline-block',
@@ -666,7 +601,7 @@ def update_image(images, current_index, prev_clicks, next_clicks,
 
 # region Callback for toggle buttons
 @app.callback(
-    Output({'type': 'toggle-button', 'index': ALL}, 'style'),
+    Output({'type': 'toggle-button', 'index': ALL}, 'className'),
     Output('toggle-state', 'data'),
     [Input({'type': 'toggle-button', 'index': ALL}, 'n_clicks')],
     State('toggle-state', 'data'),
@@ -675,39 +610,30 @@ def update_image(images, current_index, prev_clicks, next_clicks,
 def update_toggles(n_clicks_list, current_state):
     ctx = dash.callback_context
     
-    base_style = {
-        'margin': '0.5rem',
-        'padding': '0.5rem 1rem',
-        'minWidth': '8rem',
-        'flex': '1',
-    }
-    active_style = {
-        **base_style,
-        'backgroundColor': '#007bff',
-        'color': 'white'
-    }
+    base_class = 'nav-button toggle-button'
+    active_class = 'nav-button toggle-button active'
 
     if not ctx.triggered:
-        return [base_style for _ in range(3)], {'active': None}
+        return [base_class for _ in range(3)], {'active': None}
     
     if not ctx.triggered_id:
-        return [base_style for _ in range(3)], {'active': None}
+        return [base_class for _ in range(3)], {'active': None}
 
     clicked_id = ctx.triggered_id['index']
     button_names = ['Object detection', 'Segmentation', 'Water Clarity Index']
     button_id = button_names[clicked_id]
     
     if current_state['active'] == button_id:
-        return [base_style for _ in range(3)], {'active': None}
+        return [base_class for _ in range(3)], {'active': None}
 
-    styles = []
+    classes = []
     for i in range(3):
         if i == clicked_id:
-            styles.append(active_style)
+            classes.append(active_class)
         else:
-            styles.append(base_style)
+            classes.append(base_class)
     
-    return styles, {'active': button_id}
+    return classes, {'active': button_id}
 
 # endregion
 
@@ -803,6 +729,7 @@ def update_object_detection_settings(conf, od_options, toggle_state, current_set
         'show_overlay': 'show_overlay' in (od_options or [])
     })
     return current_settings
+
 # endregion
 
 # region Callback for Segmentation settings

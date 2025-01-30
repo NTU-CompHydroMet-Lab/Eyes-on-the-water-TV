@@ -19,15 +19,66 @@
     margin-top: 1rem;
 }
 
-#save-results-button:hover:not([disabled]) {
-    background-color: #218838 !important;
-    transition: background-color 0.2s ease;
+/* Update the save results button styles */
+#save-results-button {
+    display: block;  /* Ensures block-level for full width */
+    width: 100%;
+    margin-bottom: 10px;
+    padding: 8px;
+    text-align: center;
+    border: none;
+    border-radius: 4px;
+    transition: all 0.2s ease;
 }
 
-#save-results-button:active:not([disabled]) {
-    background-color: #1e7e34 !important;
+#save-results-button:not([disabled]) {
+    background-color: #28a745;
+    color: white;
+    cursor: pointer;
 }
 
 #save-results-button[disabled] {
-    pointer-events: none;
+    background-color: #6c757d;
+    color: white;
+    cursor: not-allowed;
+    opacity: 0.65;
+}
+
+#save-results-button:hover:not([disabled]) {
+    background-color: #218838;
+}
+
+#save-results-button:active:not([disabled]) {
+    background-color: #1e7e34;
+}
+
+/* Add these styles for navigation buttons */
+.nav-button {
+    display: block;
+    width: 100%;
+    margin-bottom: 10px;
+    padding: 8px;
+    text-align: center;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background-color: white;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.nav-button:hover {
+    background-color: #f8f9fa;
+    border-color: #999;
+}
+
+/* Style for toggle buttons */
+.toggle-button {
+    margin: 0 !important;  /* Override any margin inheritance */
+    width: 100% !important;  /* Ensure full width */
+}
+
+.toggle-button.active {
+    background-color: #007bff;
+    color: white;
+    border-color: #0056b3;
 } 
