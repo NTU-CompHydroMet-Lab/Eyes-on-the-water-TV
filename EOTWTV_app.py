@@ -1,0 +1,1137 @@
+from io import BytesIO
+from PIL import Image, ImageDraw, ImageFont
+import base64
+import diskcache
+import os
+import multiprocessing
+import time
+import matplotlib.pyplot as plt
+import cv2
+
+os.environ['TORCH_CUDNN_SDPA_ENABLED'] = '1'
+
+# from sam2.build_sam import build_sam2, build_sam2_video_predictor
+# from sam2.sam2_image_predictor import SAM2ImagePredictor
+from ultralytics import YOLO, SAM
+import torch
+import pandas as pd
+import numpy as np
+
+
+from dash import html, dcc, callback, long_callback
+from dash.dependencies import Input, Output, State, ALL
+from dash.long_callback import DiskcacheLongCallbackManager
+import dash
+import plotly.graph_objects as go
+import webcolors
+
+
+# Add at the top of your file, after imports
+cache = diskcache.Cache("./cache")
+long_callback_manager = DiskcacheLongCallbackManager(cache)
+
+# Initialize the Dash app
+app = dash.Dash(__name__, suppress_callback_exceptions=True,
+                long_callback_manager=long_callback_manager)
+
+# Add custom CSS as an external stylesheet
+app.index_string = '''
+<!DOCTYPE html>
+<html>
+    <head>
+        {%metas%}
+        <title>{%title%}</title>
+        {%favicon%}
+        {%css%}
+    </head>
+    <body>
+        {%app_entry%}
+        <footer>
+            {%config%}
+            {%scripts%}
+            {%renderer%}
+        </footer>
+    </body>
+</html>
+'''
+
+image_parent_folder = '/home/NAS/homes/isaac-10009/Data/EOTW-TV/App_demo_data'
+
+# Add default settings
+DEFAULT_SETTINGS = {
+    'Object detection': {
+        'confidence': 0.6,
+        'show_overlay': True,
+    },
+    'Segmentation': {
+        'show_overlay': True
+    },
+    'Water Clarity Index': {
+        'show_score': True,
+    }
+}
+
+# Initialize the AI models
+def model_init():
+
+    # Load the object detection model
+    object_detection_model = YOLO("models/yolo11x_obj_det.pt")
+
+    # # Load the segmentation model
+    sam2_segmentation_model = SAM("models/sam2.1_b.pt")
+
+    # # Load the water Clarity Index model
+    water_quality_index_model = YOLO("models/WCI_cls_best.pt")
+
+    return {
+        'object_detection': object_detection_model,
+        'segmentation': sam2_segmentation_model,
+        'water_quality_index': water_quality_index_model,
+    }
+
+# region Segmentation functions
+def show_mask(mask, ax, obj_id=None, random_color=False):
+    if random_color:
+        color = np.concatenate([np.random.random(3), np.array([0.6])], axis=0)
+    else:
+        cmap = plt.get_cmap("tab10")
+        cmap_idx = 0 if obj_id is None else obj_id
+        color = np.array([*cmap(cmap_idx)[:3], 0.6])
+    h, w = mask.shape[-2:]
+    mask_image = mask.reshape(h, w, 1) * color.reshape(1, 1, -1)
+    ax.imshow(mask_image)
+
+def show_points(coords, labels, ax, marker_size=200):
+    pos_points = coords[labels==1]
+    neg_points = coords[labels==0]
+    ax.scatter(pos_points[:, 0], pos_points[:, 1], color='green', marker='*', s=marker_size, edgecolor='white', linewidth=1.25)
+    ax.scatter(neg_points[:, 0], neg_points[:, 1], color='red', marker='*', s=marker_size, edgecolor='white', linewidth=1.25)
+
+def show_box(box, ax):
+    x0, y0 = box[0], box[1]
+    w, h = box[2] - box[0], box[3] - box[1]
+    ax.add_patch(plt.Rectangle((x0, y0), w, h, edgecolor='green', facecolor=(0, 0, 0, 0), lw=2))
+# endregion
+
+# Function to get the closest colour name
+def closest_colour(requested_colour):
+    min_colours = {}
+    for name in webcolors.names("css3"):
+        r_c, g_c, b_c = webcolors.name_to_rgb(name)
+        rd = (r_c - requested_colour[0]) ** 2
+        gd = (g_c - requested_colour[1]) ** 2
+        bd = (b_c - requested_colour[2]) ** 2
+        min_colours[(rd + gd + bd)] = name
+    return min_colours[min(min_colours.keys())]
+
+# Function to get the actual colour name
+def get_colour_name(requested_colour):
+    try:
+        closest_name = actual_name = webcolors.rgb_to_name(requested_colour)
+    except ValueError:
+        closest_name = closest_colour(requested_colour)
+        actual_name = None
+    return actual_name, closest_name
+
+# Function to get list of subfolders
+def get_subfolders(parent_folder):
+    return [f for f in os.listdir(parent_folder) if os.path.isdir(os.path.join(parent_folder, f))]
+
+# Function to get images from a folder
+def get_images(folder_path):
+    image_extensions = ('.jpg', '.jpeg', '.png', '.gif')
+    return [f for f in os.listdir(folder_path) if f.lower().endswith(image_extensions)]
+
+# Add a simple image cache to store processed images
+app.image_cache = {}
+
+# Modify the process_image function to use the cache
+def process_image(img, active_toggle, models, settings_store, img_path=None):
+    if not active_toggle or not img_path:
+        return img
+    
+    # Create cache key from image path and settings
+    cache_key = f"{img_path}_{active_toggle}_{str(settings_store[active_toggle])}"
+    
+    # Check if image is in cache
+    if cache_key in app.image_cache:
+        # print(f"Using cached image for {os.path.basename(img_path)}")
+        return app.image_cache[cache_key]
+    
+    # print(f"Processing image {os.path.basename(img_path)}")
+    
+    # Process image as before
+    settings = settings_store[active_toggle]
+    # print(settings)
+    draw = ImageDraw.Draw(img)
+    fnt = ImageFont.truetype("Pillow/Tests/fonts/FreeMono.ttf", 80)
+    
+    if active_toggle == 'Object detection':
+        results = models['object_detection'].predict(
+            img,
+            conf=settings['confidence'],
+            verbose=False,
+        )[0]
+        
+        if settings['show_overlay']:
+            img_np = results.plot()[:, :, ::-1]
+            img = Image.fromarray(img_np)
+        
+    elif active_toggle == 'Segmentation':
+        if settings['show_overlay']:
+            cache_folder = img_path.replace('/home/NAS/homes/isaac-10009/Data/EOTW-TV/App_demo_data/', '')
+            cache_folder = cache_folder.rsplit('/', 1)[0]
+
+            os.makedirs(f"cache/segmentation/{cache_folder}", exist_ok=True)
+
+            # Replace ".jpg" or ".jpeg" or ".png" with ".npy"
+            mask_path = f"cache/segmentation/{cache_folder}/{os.path.basename(img_path).lower().replace('.jpg', '.npy').replace('.jpeg', '.npy').replace('.png', '.npy')}"
+            
+            if not os.path.exists(mask_path):
+                results     = models['segmentation'].predict(img, verbose=False)
+                single_mask = results[0].masks.data.cpu().numpy()[0]
+
+                # Save the mask to a np file
+                np.save(mask_path, single_mask)
+                print(f"Saved mask to {mask_path}")
+            
+            single_mask = np.load(mask_path)
+            
+            # Convert PIL image to NumPy array
+            img_np = np.array(img, dtype=np.uint8)
+
+            # Define the orange color
+            orange_color = np.array([255, 165, 0], dtype=np.uint8)  # RGB for orange
+
+            # Create an overlay with the same size as the image
+            overlay = np.zeros_like(img_np, dtype=np.uint8)
+
+            # Apply the orange color to the regions specified by the mask
+            overlay[single_mask == True] = orange_color
+
+            # Add the orange overlay directly to the image
+            alpha = 0.5  # Transparency level for the overlay
+            img_np = img_np.astype(np.float32)  # Convert to float for blending
+            overlay = overlay.astype(np.float32)
+
+            # Increase intensity by adding the mask directly to the image
+            blended = img_np * (1 - alpha) + overlay * alpha
+
+            # Convert back to uint8 and PIL Image
+            img = Image.fromarray(np.uint8(blended))
+
+        
+        
+        
+    elif active_toggle == 'Water Clarity Index':
+        results = models['water_quality_index'].predict(img, verbose=False)
+        probs = results[0].probs.data.cpu().numpy()
+        overall_score = 1 * probs[0] + 0.5 * probs[1] + 0.0 * probs[2]
+        overall_color = np.mean(results[0].orig_img, axis=(0, 1)).astype(np.uint8)
+        actual_name, closest_name = get_colour_name(overall_color)
+        draw.text((10, 10), f"Water Clarity Score: {overall_score:.2f}, color: {closest_name}", 
+                 fill="white", font=fnt, stroke_width=20, stroke_fill="black")
+    
+    # Store processed image in cache
+    app.image_cache[cache_key] = img
+    
+    return img
+
+# Layout
+app.layout = html.Div([
+    # Title
+    html.Div(
+        children=[
+
+            # Add a logo image at the top right and title at top left in a row
+            html.Div([
+                html.H1("Eyes on the water TV", style={'margin': '0'}),
+                html.Img(src='assets/Cover_Logos.png', style={'height': '50px'}),
+            ], className='title-section', style={
+                'display': 'flex',
+                'justifyContent': 'space-between',
+                'alignItems': 'center',
+                'width': '100%',
+                'padding': '10px',
+                'backgroundColor': '#f8f9fa',
+            }),
+
+        ], className='header-title'
+    ),
+
+    # Top section - Folder selection and navigation
+    html.Div([
+        # Container for dropdowns
+        html.Div([
+            # Level 1 folder dropdown
+            dcc.Dropdown(
+                id='folder-dropdown-l1',
+                options=[],
+                placeholder='Select main folder',
+                style={
+                    'flex': '1',  # Take up available space
+                    'marginRight': '1rem',  # Using rem instead of px
+                    # 'marginLeft': '1rem',  # Using rem instead of px
+                }
+            ),
+            # Level 2 folder dropdown
+            dcc.Dropdown(
+                id='folder-dropdown-l2',
+                options=[],
+                placeholder='Select subfolder',
+                style={
+                    'flex': '1',
+                    # 'marginRight': '1rem',
+                    'marginLeft': '1rem',
+                }
+            ),
+        ], style={
+            'marginBottom': '1rem', 
+            'display': 'flex', 
+            'alignItems': 'center',
+            # 'gap': '1rem',  # Consistent spacing between items
+            'width': '100%',
+        }),
+        
+        # Navigation and toggle buttons in new row
+        html.Div([
+            # Navigation buttons container
+            html.Div([
+                html.Button('Previous', 
+                    id='prev-button',
+                    style={
+                        'margin': '0.5rem',
+                        'padding': '0.5rem 1rem',
+                        'minWidth': '3rem',
+                        'flex': '1',
+                    },
+                    n_clicks=0),
+                html.Button('Next', 
+                    id='next-button',
+                    style={
+                        'margin': '0.5rem',
+                        'padding': '0.5rem 1rem',
+                        'minWidth': '3rem',
+                        'flex': '1',
+                    },
+                    n_clicks=0),
+            ], style={
+                'display': 'flex',
+                'gap': '0.5rem',
+                'flex': '1',
+            }),
+
+            # Toggle buttons container
+            html.Div([
+                html.Button('Object detection', 
+                    id={'type': 'toggle-button', 'index': 0},
+                    n_clicks=0,
+                    style={
+                        'margin': '0.5rem',
+                        'padding': '0.5rem 1rem',
+                        'minWidth': '8rem',
+                        'flex': '1',
+                    },
+                    className='toggle-button'),
+                html.Button('Segmentation', 
+                    id={'type': 'toggle-button', 'index': 1},
+                    n_clicks=0,
+                    style={
+                        'margin': '0.5rem',
+                        'padding': '0.5rem 1rem',
+                        'minWidth': '8rem',
+                        'flex': '1',
+                    },
+                    className='toggle-button'),
+                html.Button('Water Clarity Index', 
+                    id={'type': 'toggle-button', 'index': 2},
+                    n_clicks=0,
+                    style={
+                        'margin': '0.5rem',
+                        'padding': '0.5rem 1rem',
+                        'minWidth': '8rem',
+                        'flex': '1',
+                    },
+                    className='toggle-button'),
+            ], style={
+                'display': 'flex',
+                'gap': '0.5rem',
+                'flex': '2',
+            }),
+        ], style={
+            'marginBottom': '1rem',
+            'display': 'flex',
+            'flexWrap': 'wrap',
+            'alignItems': 'center',
+            'gap': '1rem',
+            'width': '100%',
+        }),
+    ], style={
+        'padding': '1rem',
+        'backgroundColor': '#f8f9fa',
+        'width': '100%',
+    }),
+    
+    # Main content area
+    html.Div([
+        # Left section - Image display only
+        html.Div([
+            # Image display using html.Img
+            html.Img(
+                id='displayed-image',
+                style={'width': '100%', 'maxHeight': '60vh', 'objectFit': 'contain'}
+            ),
+        ], style={'width': '60%', 'display': 'inline-block', 'verticalAlign': 'top'}),
+        
+        # Right section - Analysis plot, info and settings
+        html.Div([
+            # Analysis plot at the top (without loading)
+            dcc.Graph(
+                id='analysis-plot',
+                config={'displayModeBar': True},
+                style={'height': '30vh', 'marginBottom': '20px'}
+            ),
+            
+            # Image info section
+            html.Div([
+                html.H4('Image Information'),
+                html.Div(id='image-info'),
+            ]),
+            
+            # Settings section
+            html.Div([
+                html.H4('Settings'),
+                html.Div(id='settings-container', style={'display': 'none'})
+            ]),
+            
+            # Add Download section
+            html.Div([
+                html.Button(
+                    'Save Results', 
+                    id='save-results-button',
+                    disabled=True,  # Initially disabled
+                    style={
+                        'margin': '1rem 0',
+                        'padding': '0.5rem 1rem',
+                        'backgroundColor': '#6c757d',  # Initially grey
+                        'color': 'white',
+                        'border': 'none',
+                        'borderRadius': '0.25rem',
+                        'cursor': 'not-allowed',  # Show not-allowed cursor when disabled
+                    }
+                ),
+                dcc.Download(id='download-results')
+            ], style={'marginTop': '1rem'}),
+        ], style={'width': '35%', 'display': 'inline-block', 'marginLeft': '5%'})
+    ]),
+    
+    # Add store for click data
+    dcc.Store(id='click-data', data=None),
+    
+    # Add settings store
+    dcc.Store(id='settings-store', data=DEFAULT_SETTINGS),
+    
+    # Store components for maintaining state
+    dcc.Store(id='current-images'),
+    dcc.Store(id='current-index', data=0),
+    dcc.Store(id='toggle-state', data={'active': None}),
+    # Store for detection results
+    dcc.Store(id='detection-results', data=None),
+    dcc.Store(id='water-quality-results', data=None),
+    dcc.Store(id='processed-results-cache', data={
+        'folder_path': None,
+        'active_toggle': None,
+        'settings': None,
+        'results': {}  # Will store {image_name: {'detections': n} or {'score': s, 'color': c}}
+    }),
+    dcc.Store(id='dummy-output'),  # For cache clearing callback
+])
+
+# region Initialize the AI models
+models = model_init()
+# endregion
+
+# region Callback to update folder options
+@app.callback(
+    Output('folder-dropdown-l1', 'options'),
+    Output('folder-dropdown-l1', 'value'),
+    Output({'type': 'toggle-button', 'index': ALL}, 'style', allow_duplicate=True),
+    Output('toggle-state', 'data', allow_duplicate=True),
+    Input('folder-dropdown-l1', 'value'),  # Dummy input to initialize
+    prevent_initial_call='initial_duplicate'
+)
+def update_l1_folder_options(selected_l1_folder):
+    parent_folder = image_parent_folder  # Your level 1 folder path
+    folders = get_subfolders(parent_folder)
+
+    base_style = {
+        'margin': '0.5rem',
+        'padding': '0.5rem 1rem',
+        'minWidth': '8rem',
+        'flex': '1',
+    }
+
+    return ([{'label': folder, 'value': folder} for folder in folders], 
+            selected_l1_folder if selected_l1_folder else None, 
+            [base_style for _ in range(3)],
+            {'active': None},
+    )
+
+@app.callback(
+    Output('folder-dropdown-l2', 'options'),
+    Output('folder-dropdown-l2', 'value'),
+    Input('folder-dropdown-l1', 'value'),
+    State('folder-dropdown-l2', 'value'),
+    prevent_initial_call=True
+)
+def update_l2_folder_options(selected_l1_folder, selected_l2_folder):
+    if not selected_l1_folder:
+        return [], None
+    
+    parent_folder = os.path.join(image_parent_folder, selected_l1_folder)
+    folders = get_subfolders(parent_folder)
+
+    
+    return [{'label': folder, 'value': folder} for folder in folders], folders[0]
+
+# endregion
+
+# region Callback to update image list when folder is selected
+@app.callback(
+    Output('current-images', 'data'),
+    Output('current-index', 'data', allow_duplicate=True),
+    Input('folder-dropdown-l2', 'value'),
+    State('folder-dropdown-l1', 'value'),
+    prevent_initial_call=True
+)
+def update_image_list(selected_l2_folder, selected_l1_folder):
+    if not selected_l2_folder or not selected_l1_folder:
+        return [], 0
+    
+    folder_path = os.path.join(image_parent_folder, 
+                              selected_l1_folder, selected_l2_folder)
+    images = get_images(folder_path)
+    return images, 0
+
+# endregion
+
+# region Callback to update displayed image and info
+@app.callback(
+    Output('displayed-image', 'src'),
+    Output('analysis-plot', 'figure'),
+    Output('image-info', 'children'),
+    Output('current-index', 'data', allow_duplicate=True),
+    Input('current-images', 'data'),
+    Input('current-index', 'data'),
+    Input('prev-button', 'n_clicks'),
+    Input('next-button', 'n_clicks'),
+    Input('toggle-state', 'data'),
+    Input('settings-store', 'data'),
+    Input('processed-results-cache', 'data'),
+    Input('analysis-plot', 'clickData'),
+    State('folder-dropdown-l1', 'value'),
+    State('folder-dropdown-l2', 'value'),
+    prevent_initial_call=True
+)
+def update_image(images, current_index, prev_clicks, next_clicks, 
+                toggle_state, settings_store, results_cache,
+                click_data, selected_l1_folder, selected_l2_folder):
+    
+    if not images or not selected_l1_folder or not selected_l2_folder:
+        empty_fig = go.Figure()
+        empty_fig.update_layout(
+            xaxis={'showgrid': False, 'zeroline': False, 'visible': False},
+            yaxis={'showgrid': False, 'zeroline': False, 'visible': False},
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            margin=dict(l=0, r=0, t=0, b=0),
+            annotations=[{
+                'text': 'Please select the folders',
+                'xref': 'paper',
+                'yref': 'paper',
+                'x': 0.5,
+                'y': 0.5,
+                'showarrow': False
+            }]
+        )
+        
+        info = html.Div([
+            html.P("Filename: None"),
+            html.P("Size: N/A"),
+            html.P("Format: N/A"),
+            html.P("Please select the folders"),
+        ])
+        
+        return '', empty_fig, info, 0
+    
+    # Handle navigation and click events FIRST
+    ctx = dash.callback_context
+    if ctx.triggered:
+        trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+        if trigger_id == 'prev-button' and current_index > 0:
+            current_index -= 1
+        elif trigger_id == 'next-button' and current_index < len(images) - 1:
+            current_index += 1
+        elif trigger_id == 'analysis-plot' and click_data:
+            clicked_index = click_data['points'][0]['pointNumber']
+            if 0 <= clicked_index < len(images):
+                current_index = clicked_index
+
+    # Create analysis figure
+    analysis_fig = go.Figure()
+    active_toggle = toggle_state['active'] if toggle_state else None
+    
+    if active_toggle == 'Object detection' and results_cache and results_cache['results']:
+        # Use cached results for the plot
+        x_values = list(range(len(images)))
+        y_values = [results_cache['results'][img]['detections'] for img in images]
+        
+        analysis_fig.add_trace(go.Bar(
+            x=x_values,
+            y=y_values,
+            name='Detections',
+            hovertemplate='Image %{x}<br>Detections: %{y}<extra></extra>'
+        ))
+        
+        # Highlight current image
+        analysis_fig.add_trace(go.Scatter(
+            x=[current_index],
+            y=[results_cache['results'][images[current_index]]['detections']],
+            mode='markers',
+            marker=dict(
+                color='red',
+                size=12,
+                symbol='x'
+            ),
+            name='Current Image'
+        ))
+        
+        analysis_fig.update_layout(
+            title='Number of Detections per Image',
+            xaxis_title='Image Index',
+            yaxis_title='Number of Detections',
+            showlegend=True,
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            clickmode='event'
+        )
+        
+    elif active_toggle == 'Segmentation' and results_cache and results_cache['results']:
+
+        all_areas = [results_cache['results'][k]['area'] for k in results_cache['results'].keys()]
+        # print(f"All areas: {all_areas}, {current_index}")
+        # Create line plot of segmented area
+        analysis_fig.add_trace(go.Scatter(
+            x=list(range(len(images))),
+            y=all_areas,
+            mode='lines+markers',
+            name='Segmented Area',
+            hovertemplate='Image %{x}<br>Area: %{y:,.0f} pixels<extra></extra>'
+        ))
+        
+        # Baseline for the plot
+        y = 1500000
+        analysis_fig.add_trace(go.Scatter(
+            x=[0, len(images)],
+            y=[y, y],
+            mode='lines',
+            name='Baseline',
+            line=dict(dash='dash', 
+                      color='black')
+        ))
+
+        # Highlight current image
+        analysis_fig.add_trace(go.Scatter(
+            x=[current_index],
+            y=[all_areas[current_index]],
+            mode='markers',
+            marker=dict(
+                color='red',
+                size=12,
+                symbol='x'
+            ),
+            name='Current Image'
+        ))
+        
+        analysis_fig.update_layout(
+            title='Segmented Area Over Time',
+            xaxis_title='Image Index',
+            yaxis_title='Area (pixels)',
+            showlegend=True,
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            clickmode='event'
+        )
+            
+    elif active_toggle == 'Water Clarity Index' and results_cache and results_cache['results']:
+        # Use cached results for the plot
+        x_values = list(range(len(images)))
+        y_values = [results_cache['results'][img]['score'] for img in images]
+        colors = [results_cache['results'][img]['color'] for img in images]
+        
+        analysis_fig.add_trace(go.Scatter(
+            x=x_values,
+            y=y_values,
+            mode='lines+markers',
+            name='Water Clarity Score',
+            hovertemplate='Image %{x}<br>Score: %{y:.2f}<br>Color: %{customdata}<extra></extra>',
+            customdata=colors
+        ))
+        
+        # Highlight current image
+        analysis_fig.add_trace(go.Scatter(
+            x=[current_index],
+            y=[results_cache['results'][images[current_index]]['score']],
+            mode='markers',
+            marker=dict(
+                color='red',
+                size=12,
+                symbol='x'
+            ),
+            name='Current Image'
+        ))
+        
+        analysis_fig.update_layout(
+            title='Water Clarity Score Timeline',
+            xaxis_title='Image Index',
+            yaxis_title='Water Clarity Score',
+            yaxis=dict(range=[0, 1.2]),
+            showlegend=True,
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            clickmode='event'
+        )
+    
+    else:
+        # Default empty plot with message
+        analysis_fig.update_layout(
+            title=f'Analysis plot',
+            xaxis=dict(visible=False),
+            yaxis=dict(visible=False),
+            annotations=[dict(
+                text="Please select a analysis model first.",
+                xref="paper",
+                yref="paper",
+                showarrow=False,
+                font=dict(size=20)
+            )]
+        )
+
+    # Get current image path and basic info
+    image_path = os.path.join(image_parent_folder, selected_l1_folder, selected_l2_folder, images[current_index])
+    img = Image.open(image_path)
+    
+    # Process image (no caching for displayed images)
+    processed_img = process_image(img.copy(), active_toggle, models, settings_store, image_path)
+    
+    # Convert to base64
+    buffered = BytesIO()
+    processed_img.save(buffered, format=img.format)
+    img_str = base64.b64encode(buffered.getvalue()).decode()
+    img_src = f'data:image/{img.format.lower()};base64,{img_str}'
+
+    # Update info display
+    info = html.Div([
+        html.P(f"Filename: {images[current_index]}"),
+        html.P(f"Size: {img.size[0]} x {img.size[1]} pixels"),
+        html.P(f"Format: {img.format}"),
+        html.P(f"Image {current_index + 1} of {len(images)}"),
+        html.P(f"Active Toggle: {active_toggle if active_toggle else 'None'}"),
+    ])
+
+    return img_src, analysis_fig, info, current_index
+
+# endregion
+
+# region Callback for toggle buttons
+@app.callback(
+    Output({'type': 'toggle-button', 'index': ALL}, 'style'),
+    Output('toggle-state', 'data'),
+    [Input({'type': 'toggle-button', 'index': ALL}, 'n_clicks')],
+    State('toggle-state', 'data'),
+    prevent_initial_call=True
+)
+def update_toggles(n_clicks_list, current_state):
+    ctx = dash.callback_context
+    
+    base_style = {
+        'margin': '0.5rem',
+        'padding': '0.5rem 1rem',
+        'minWidth': '8rem',
+        'flex': '1',
+    }
+    active_style = {
+        **base_style,
+        'backgroundColor': '#007bff',
+        'color': 'white'
+    }
+
+    if not ctx.triggered:
+        return [base_style for _ in range(3)], {'active': None}
+    
+    if not ctx.triggered_id:
+        return [base_style for _ in range(3)], {'active': None}
+    
+    clicked_id = ctx.triggered_id['index']
+    button_names = ['Object detection', 'Segmentation', 'Water Clarity Index']
+    button_id = button_names[clicked_id]
+    
+    if current_state['active'] == button_id:
+        return [base_style for _ in range(3)], {'active': None}
+    
+    styles = []
+    for i in range(3):
+        if i == clicked_id:
+            styles.append(active_style)
+        else:
+            styles.append(base_style)
+    
+    return styles, {'active': button_id}
+
+# endregion
+
+# region Add callback to update settings container
+@app.callback(
+    Output('settings-container', 'children'),
+    Output('settings-container', 'style'),
+    Input('toggle-state', 'data'),
+    Input('settings-store', 'data')
+)
+def update_settings_container(toggle_state, current_settings):
+    if not toggle_state['active']:
+        return [], {'display': 'none'}
+    
+    active_toggle = toggle_state['active']
+    settings = current_settings[active_toggle]
+    
+    if active_toggle == 'Object detection':
+        return html.Div([
+            html.Div([
+                html.Label(f'Confidence Threshold: {settings["confidence"]:.2f}'),
+                dcc.Slider(
+                    id='confidence-slider',
+                    min=0,
+                    max=1,
+                    step=0.05,
+                    value=settings['confidence'],
+                    marks={i/10: str(i/10) for i in range(0, 11, 2)},
+                ),
+            ], style={'marginBottom': '1rem'}),
+            
+            html.Div([
+                dcc.Checklist(
+                    id='od-display-options',
+                    options=[
+                        {'label': 'Show Overlay', 'value': 'show_overlay'},
+                    ],
+                    value=['show_overlay'] if settings['show_overlay'] else [],
+                )
+            ])
+        ]), {'display': 'block'}
+
+    elif active_toggle == 'Segmentation':
+        return html.Div([
+            html.Div([
+                dcc.Checklist(
+                    id='seg-display-options',
+                    options=[
+                        {'label': 'Show Overlay', 'value': 'show_overlay'},
+                    ],
+                    value=['show_overlay'] if settings['show_overlay'] else [],
+                )
+            ])
+        ]), {'display': 'block'}
+
+    elif active_toggle == 'Water Clarity Index':
+        return html.Div([
+            html.Div([
+                html.Label('Quality Thresholds'),
+            ], style={'marginBottom': '1rem'}),
+            
+            html.Div([
+                dcc.Checklist(
+                    id='wci-display-options',
+                    options=[
+                        {'label': 'Show Score', 'value': 'show_score'},
+                    ],
+                    value=['show_score'] if settings['show_score'] else [],
+                )
+            ])
+        ]), {'display': 'block'}
+    
+    return [], {'display': 'none'}
+# endregion
+
+# region Callback for Object Detection settings
+@app.callback(
+    Output('settings-store', 'data', allow_duplicate=True),
+    [
+     Input('confidence-slider', 'value'),
+     Input('od-display-options', 'value')
+     ],
+    State('toggle-state', 'data'),
+    State('settings-store', 'data'),
+    prevent_initial_call=True
+)
+def update_object_detection_settings(conf, od_options, toggle_state, current_settings):
+    if not toggle_state['active'] or toggle_state['active'] != 'Object detection':
+        return dash.no_update
+
+    current_settings['Object detection'].update({
+        'confidence': conf if conf is not None else current_settings['Object detection']['confidence'],
+        'show_overlay': 'show_overlay' in (od_options or [])
+    })
+    return current_settings
+# endregion
+
+# region Callback for Segmentation settings
+@app.callback(
+    Output('settings-store', 'data', allow_duplicate=True),
+    [
+        # Input('threshold-good', 'value'),
+        # Input('threshold-medium', 'value'),
+        Input('seg-display-options', 'value')
+        ],
+    State('toggle-state', 'data'),
+    State('settings-store', 'data'),
+    prevent_initial_call=True
+)
+def update_segmentation_settings(seg_options, toggle_state, current_settings):
+    if not toggle_state['active'] or toggle_state['active'] != 'Segmentation':
+        return dash.no_update
+    
+    current_settings['Segmentation'].update({
+        'show_overlay': 'show_overlay' in (seg_options or [])
+    })
+    return current_settings
+# endregion
+
+# region Callback for Water Clarity Index settings
+@app.callback(
+    Output('settings-store', 'data', allow_duplicate=True),
+    [
+        # Input('threshold-good', 'value'),
+        # Input('threshold-medium', 'value'),
+        Input('wci-display-options', 'value')
+        ],
+    State('toggle-state', 'data'),
+    State('settings-store', 'data'),
+    prevent_initial_call=True
+)
+def update_wci_settings(wci_options, toggle_state, current_settings):
+    if not toggle_state['active'] or toggle_state['active'] != 'Index':
+        return dash.no_update
+
+    current_settings['Water Clarity Index'].update({
+        # 'threshold_good': thresh_good if thresh_good is not None else current_settings['Water Clarity Index']['threshold_good'],
+        # 'threshold_medium': thresh_med if thresh_med is not None else current_settings['Water Clarity Index']['threshold_medium'],
+        'show_score': 'show_score' in (wci_options or [])
+    })
+
+    return current_settings
+# endregion
+
+# region Add new callback to process and cache results
+@app.callback(
+    Output('processed-results-cache', 'data'),
+    Input('folder-dropdown-l2', 'value'),
+    Input('toggle-state', 'data'),
+    Input('settings-store', 'data'),
+    State('folder-dropdown-l1', 'value'),
+    prevent_initial_call=True,
+    memoize=True  # Add memoization
+)
+def cache_processed_results(selected_l2_folder, toggle_state, settings_store, selected_l1_folder):
+    if not selected_l2_folder or not selected_l1_folder:
+        app.cached_results = None  # Clear cache when no folder selected
+        return {
+            'folder_path': None,
+            'active_toggle': None,
+            'settings': None,
+            'results': {}
+        }
+    
+    active_toggle = toggle_state['active'] if toggle_state else None
+    folder_path = os.path.join(image_parent_folder, selected_l1_folder, selected_l2_folder)
+    
+    seg_cache_folder = os.path.join("cache/segmentation", selected_l1_folder, selected_l2_folder)
+    os.makedirs(seg_cache_folder, exist_ok=True)
+
+    # Create cache key from current state
+    current_state = {
+        'folder_path': folder_path,
+        'active_toggle': active_toggle,
+        'settings': settings_store.get(active_toggle, {}) if active_toggle else None,
+        'results': {}
+    }
+    
+    if not active_toggle:
+        return current_state
+    
+    # print(f"Processing results for all images in {folder_path} for {active_toggle}")
+    images = get_images(folder_path)
+    
+    # Process all images
+    for img_name in images:
+        img_path = os.path.join(folder_path, img_name)
+        img = Image.open(img_path)
+        
+        if active_toggle == 'Object detection':
+            result = models['object_detection'].predict(
+                img,
+                conf=settings_store['Object detection']['confidence'],
+                verbose=False
+            )
+            detected_classes = [models['object_detection'].names[cls] for cls in result[0].boxes.cls.cpu().tolist()]
+            detected_confidences = result[0].boxes.conf.cpu().tolist()
+
+            current_state['results'][img_name] = {
+                'detections': len(result[0].boxes.cls),
+                'detected_classes': detected_classes,
+                'detected_confidences': detected_confidences
+            }
+            
+        elif active_toggle == 'Segmentation':
+            
+            cache_path = os.path.join(seg_cache_folder, f"{os.path.basename(img_path).lower().replace('.jpg', '.npy').replace('.jpeg', '.npy').replace('.png', '.npy')}")
+            if not os.path.exists(cache_path):
+                result = models['segmentation'].predict(
+                    img,
+                    points=[[img.size[0]//2 + 0, img.size[1]//4 * 3 + 0],
+                            [img.size[0]//2 + 10, img.size[1]//4 * 3 + 10],
+                            [img.size[0]//2 - 10, img.size[1]//4 * 3 - 10],
+                            [img.size[0]//2 + 10, img.size[1]//4 * 3 - 10],
+                            [img.size[0]//2 - 10, img.size[1]//4 * 3 + 10],
+                            
+                            ], # Center of the image (shape: h x w)
+                    # conf=settings_store['Segmentation']['confidence'],
+                    verbose=False
+                )
+
+                idx_with_biggest_area = np.argmax(result[0].masks.data.cpu().numpy().sum(axis=(1, 2)))
+                np.save(cache_path, result[0].masks.data.cpu().numpy()[idx_with_biggest_area])
+            
+            single_mask = np.load(cache_path)
+            current_state['results'][img_name] = {
+                'area': single_mask.sum()
+            }
+
+
+        elif active_toggle == 'Water Clarity Index':
+            result = models['water_quality_index'].predict(img, verbose=False)
+            probs = result[0].probs.data.cpu().numpy()
+            overall_score = 1 * probs[0] + 0.5 * probs[1] + 0.0 * probs[2]
+            overall_color = np.mean(result[0].orig_img, axis=(0, 1)).astype(np.uint8)
+            _, closest_name = get_colour_name(overall_color)
+            
+            current_state['results'][img_name] = {
+                'score': float(overall_score),
+                'color': closest_name
+            }
+    
+    # print(f"Results cached for {len(images)} images")
+    # print(current_state['results'])
+
+    return current_state
+# endregion
+
+# Add a callback to clear the cache when needed
+@app.callback(
+    Output('dummy-output', 'data'),  # Add this store to your layout
+    Input('folder-dropdown-l1', 'value'),
+    Input('folder-dropdown-l2', 'value'),
+    Input('settings-store', 'data'),
+    prevent_initial_call=True
+)
+def clear_image_cache(folder_l1, folder_l2, settings):
+    app.image_cache = {}
+    return None
+
+# Add this callback after the other callbacks:
+@app.callback(
+    Output('download-results', 'data'),
+    Input('save-results-button', 'n_clicks'),
+    State('processed-results-cache', 'data'),
+    State('folder-dropdown-l1', 'value'),
+    State('folder-dropdown-l2', 'value'),
+    State('toggle-state', 'data'),
+    prevent_initial_call=True
+)
+def download_results(n_clicks, results_cache, folder_l1, folder_l2, toggle_state):
+    if not n_clicks or not results_cache or not results_cache['results']:
+        return None
+    
+    active_toggle = toggle_state['active']
+    if not active_toggle:
+        return None
+    
+    # Create DataFrame based on the active toggle
+    if active_toggle == 'Object detection':
+        df = pd.DataFrame([
+            {
+                'Image': img_name,
+                'Number_of_Detections': data['detections'],
+                'Detected_Classes': ', '.join(data['detected_classes']),
+                'Confidences': ', '.join([f'{conf:.2f}' for conf in data['detected_confidences']])
+            }
+            for img_name, data in results_cache['results'].items()
+        ])
+    
+    elif active_toggle == 'Segmentation':
+        df = pd.DataFrame([
+            {
+                'Image': img_name,
+                'Segmented_Area': data['area']
+            }
+            for img_name, data in results_cache['results'].items()
+        ])
+    
+    elif active_toggle == 'Water Clarity Index':
+        df = pd.DataFrame([
+            {
+                'Image': img_name,
+                'Water_Clarity_Score': data['score'],
+                'Dominant_Color': data['color']
+            }
+            for img_name, data in results_cache['results'].items()
+        ])
+    
+    # Generate filename
+    filename = f"{folder_l1}_{folder_l2}_{active_toggle.replace(' ', '_')}_results.csv"
+    
+    return dcc.send_data_frame(df.to_csv, filename, index=False, float_format='%.2f')
+
+# Add this new callback after the other callbacks:
+@app.callback(
+    Output('save-results-button', 'disabled'),
+    Output('save-results-button', 'style'),
+    Input('toggle-state', 'data')
+)
+def update_save_button_state(toggle_state):
+    base_style = {
+        'margin': '1rem 0',
+        'padding': '0.5rem 1rem',
+        'color': 'white',
+        'border': 'none',
+        'borderRadius': '0.25rem',
+    }
+    
+    if not toggle_state or not toggle_state['active']:
+        # Disabled state
+        return True, {
+            **base_style,
+            'backgroundColor': '#6c757d',  # Grey
+            'cursor': 'not-allowed',
+            'opacity': '0.65'
+        }
+    else:
+        # Enabled state
+        return False, {
+            **base_style,
+            'backgroundColor': '#28a745',  # Green
+            'cursor': 'pointer'
+        }
+
+if __name__ == '__main__':
+    # multiprocessing.set_start_method('spawn', force=True)
+    app.run_server(host="0.0.0.0", port="8051", debug=True)

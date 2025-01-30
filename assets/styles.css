@@ -1,0 +1,33 @@
+.settings-container {
+    padding: 1rem;
+    background-color: #f8f9fa;
+    border-radius: 0.5rem;
+    margin-top: 1rem;
+}
+
+.settings-container label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+}
+
+.settings-container .dash-slider {
+    margin-bottom: 1.5rem;
+}
+
+.settings-container .dash-checklist {
+    margin-top: 1rem;
+}
+
+#save-results-button:hover:not([disabled]) {
+    background-color: #218838 !important;
+    transition: background-color 0.2s ease;
+}
+
+#save-results-button:active:not([disabled]) {
+    background-color: #1e7e34 !important;
+}
+
+#save-results-button[disabled] {
+    pointer-events: none;
+} 
