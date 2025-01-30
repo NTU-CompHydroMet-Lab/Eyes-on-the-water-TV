@@ -7,6 +7,7 @@ import multiprocessing
 import time
 import matplotlib.pyplot as plt
 import cv2
+from baseline_config import load_baselines, set_baseline, get_baseline
 
 os.environ['TORCH_CUDNN_SDPA_ENABLED'] = '1'
 
@@ -243,7 +244,6 @@ app.layout = html.Div([
     # Title
     html.Div(
         children=[
-
             # Add a logo image at the top right and title at top left in a row
             html.Div([
                 html.H1("Eyes on the water TV", style={'margin': '0'}),
@@ -441,6 +441,24 @@ app.layout = html.Div([
                     ),
                     dcc.Download(id='download-results')
                 ], style={'marginTop': '1rem'}),
+
+                # Add to the layout, just before the Save Results button
+                html.Div([
+                    html.Button(
+                        'Set Current as Baseline', 
+                        id='set-baseline-button',
+                        disabled=True,
+                        style={
+                            'margin': '1rem 0',
+                            'padding': '0.5rem 1rem',
+                            'backgroundColor': '#28a745',  # Green color
+                            'color': 'white',
+                            'border': 'none',
+                            'borderRadius': '0.25rem',
+                            'cursor': 'pointer',
+                        }
+                    ),
+                ], style={'marginTop': '1rem'}),
             ], style={
                 'width': '18%',
                 'display': 'inline-block',
@@ -474,6 +492,8 @@ app.layout = html.Div([
         'results': {}  # Will store {image_name: {'detections': n} or {'score': s, 'color': c}}
     }),
     dcc.Store(id='dummy-output'),  # For cache clearing callback
+    # Add a store for baselines
+    dcc.Store(id='baselines-store', data={}),
 ])
 
 # region Initialize the AI models
@@ -565,7 +585,6 @@ def update_image_list(selected_l2_folder, selected_l1_folder):
 def update_image(images, current_index, prev_clicks, next_clicks, 
                 toggle_state, settings_store, results_cache,
                 click_data, selected_l1_folder, selected_l2_folder):
-    
     if not images or not selected_l1_folder or not selected_l2_folder:
         empty_fig = go.Figure()
         empty_fig.update_layout(
@@ -592,8 +611,11 @@ def update_image(images, current_index, prev_clicks, next_clicks,
         ])
         
         return '', empty_fig, info, 0
-    
-    # Handle navigation and click events FIRST
+
+    # Extract active_toggle from toggle_state
+    active_toggle = toggle_state['active'] if toggle_state else None
+
+    # Handle navigation and click events
     ctx = dash.callback_context
     if ctx.triggered:
         trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
@@ -606,104 +628,15 @@ def update_image(images, current_index, prev_clicks, next_clicks,
             if 0 <= clicked_index < len(images):
                 current_index = clicked_index
 
-    # Create analysis figure with multiple y-axes
-    analysis_fig = make_subplots(specs=[[{"secondary_y": True}]])
+    # Create analysis figure using the helper function
+    baseline = get_baseline(selected_l1_folder)
+    if baseline is None and images:
+        first_image = images[0]
+        baseline = results_cache['results'][first_image]['segmentation']['area']
     
-    if results_cache and results_cache['results']:
-        x_values = list(range(len(images)))
-        
-        # Object Detection trace (primary y-axis)
-        y_od = [results_cache['results'][img]['object_detection']['detections'] for img in images]
-        analysis_fig.add_trace(
-            go.Scatter(
-                x=x_values,
-                y=y_od,
-                name='Detections',
-                line=dict(color='blue'),
-                hovertemplate='Image %{x}<br>Detections: %{y}<extra></extra>'
-            ),
-            secondary_y=False
-        )
-        
-        # Segmentation trace (secondary y-axis)
-        y_seg = [results_cache['results'][img]['segmentation']['area'] for img in images]
-        analysis_fig.add_trace(
-            go.Scatter(
-                x=x_values,
-                y=y_seg,
-                name='Segmented Area',
-                line=dict(color='red'),
-                hovertemplate='Image %{x}<br>Area: %{y:,.0f} pixels<extra></extra>'
-            ),
-            secondary_y=True
-        )
-        
-        # Water Clarity Index trace (primary y-axis)
-        y_wci = [results_cache['results'][img]['water_clarity_index']['score'] for img in images]
-        analysis_fig.add_trace(
-            go.Scatter(
-                x=x_values,
-                y=y_wci,
-                name='Water Clarity',
-                line=dict(color='green'),
-                hovertemplate='Image %{x}<br>Score: %{y:.2f}<extra></extra>'
-            ),
-            secondary_y=False
-        )
-        
-        # Highlight current image
-        active_toggle = toggle_state['active'] if toggle_state else None
-        if active_toggle == 'Object detection':
-            analysis_fig.add_trace(
-                go.Scatter(
-                    x=[current_index],
-                    y=[y_od[current_index]],
-                    mode='markers',
-                    marker=dict(color='blue', size=12, symbol='x'),
-                    name='Current Image',
-                    showlegend=False
-                ),
-                secondary_y=False
-            )
-        elif active_toggle == 'Segmentation':
-            analysis_fig.add_trace(
-                go.Scatter(
-                    x=[current_index],
-                    y=[y_seg[current_index]],
-                    mode='markers',
-                    marker=dict(color='red', size=12, symbol='x'),
-                    name='Current Image',
-                    showlegend=False
-                ),
-                secondary_y=True
-            )
-        elif active_toggle == 'Water Clarity Index':
-            analysis_fig.add_trace(
-                go.Scatter(
-                    x=[current_index],
-                    y=[y_wci[current_index]],
-                    mode='markers',
-                    marker=dict(color='green', size=12, symbol='x'),
-                    name='Current Image',
-                    showlegend=False
-                ),
-                secondary_y=False
-            )
-
-        # Update layout
-        analysis_fig.update_layout(
-            title='Multi-Model Analysis',
-            xaxis_title='Image Index',
-            hovermode='x unified',
-            showlegend=True,
-            plot_bgcolor='white',
-            paper_bgcolor='white',
-            clickmode='event'
-        )
-        
-        # Update y-axes titles
-        analysis_fig.update_yaxes(title_text="Detections / Water Clarity Score", secondary_y=False)
-        analysis_fig.update_yaxes(title_text="Segmented Area (pixels)", secondary_y=True)
+    analysis_fig = create_analysis_plot(
+        results_cache, images, current_index, toggle_state, baseline
+    )
 
     # Get current image path and basic info
     image_path = os.path.join(image_parent_folder, selected_l1_folder, selected_l2_folder, images[current_index])
@@ -759,14 +692,14 @@ def update_toggles(n_clicks_list, current_state):
     
     if not ctx.triggered_id:
         return [base_style for _ in range(3)], {'active': None}
-    
+
     clicked_id = ctx.triggered_id['index']
     button_names = ['Object detection', 'Segmentation', 'Water Clarity Index']
     button_id = button_names[clicked_id]
     
     if current_state['active'] == button_id:
         return [base_style for _ in range(3)], {'active': None}
-    
+
     styles = []
     for i in range(3):
         if i == clicked_id:
@@ -1046,10 +979,17 @@ def download_results(n_clicks, results_cache, folder_l1, folder_l2, toggle_state
         ])
     
     elif active_toggle == 'Segmentation':
+        baseline = get_baseline(folder_l1)
+        if baseline is None and results_cache['results']:
+            first_image = next(iter(results_cache['results']))
+            baseline = results_cache['results'][first_image]['segmentation']['area']
+            
         df = pd.DataFrame([
             {
                 'Image': img_name,
-                'Segmented_Area': data['segmentation']['area']
+                'Segmented_Area': data['segmentation']['area'],
+                'Baseline': baseline,
+                'Difference_from_Baseline': data['segmentation']['area'] - baseline
             }
             for img_name, data in results_cache['results'].items()
         ])
@@ -1099,6 +1039,174 @@ def update_save_button_state(toggle_state):
             'backgroundColor': '#28a745',  # Green
             'cursor': 'pointer'
         }
+
+# Add callback to initialize baselines store
+@app.callback(
+    Output('baselines-store', 'data'),
+    Input('folder-dropdown-l1', 'value'),
+    prevent_initial_call=True
+)
+def initialize_baselines(level1_folder):
+    if not level1_folder:
+        return {}
+    return load_baselines()
+
+# Modify the handle_baseline_setting callback
+@app.callback(
+    Output('baselines-store', 'data', allow_duplicate=True),
+    Output('set-baseline-button', 'disabled'),
+    Output('analysis-plot', 'figure', allow_duplicate=True),
+    Input('set-baseline-button', 'n_clicks'),
+    Input('toggle-state', 'data'),
+    State('folder-dropdown-l1', 'value'),
+    State('current-images', 'data'),
+    State('current-index', 'data'),
+    State('processed-results-cache', 'data'),
+    State('baselines-store', 'data'),
+    prevent_initial_call=True
+)
+def handle_baseline_setting(n_clicks, toggle_state, level1_folder, images, current_index, 
+                          results_cache, current_baselines):
+    ctx = dash.callback_context
+    trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    
+    # Enable button if we have valid data, regardless of toggle state
+    button_disabled = not images or not level1_folder or not results_cache or not results_cache['results']
+    
+    # Initialize with current plot
+    analysis_fig = dash.no_update
+    
+    if trigger_id == 'set-baseline-button' and n_clicks and not button_disabled and images:
+        current_image = images[current_index]
+        current_area = results_cache['results'][current_image]['segmentation']['area']
+        set_baseline(level1_folder, current_area)
+        current_baselines = load_baselines()
+        
+        # Create updated plot
+        analysis_fig = create_analysis_plot(
+            results_cache, images, current_index, toggle_state, current_area
+        )
+    
+    return current_baselines, button_disabled, analysis_fig
+
+# Add a new helper function to create the analysis plot
+def create_analysis_plot(results_cache, images, current_index, toggle_state, baseline=None):
+    analysis_fig = make_subplots(specs=[[{"secondary_y": True}]])
+    
+    if results_cache and results_cache['results']:
+        x_values = list(range(len(images)))
+        
+        # Object Detection trace (primary y-axis)
+        y_od = [results_cache['results'][img]['object_detection']['detections'] for img in images]
+        analysis_fig.add_trace(
+            go.Scatter(
+                x=x_values,
+                y=y_od,
+                name='Detections',
+                line=dict(color='blue'),
+                hovertemplate='Image %{x}<br>Detections: %{y}<extra></extra>'
+            ),
+            secondary_y=False
+        )
+        
+        # Segmentation trace (secondary y-axis)
+        y_seg = [results_cache['results'][img]['segmentation']['area'] for img in images]
+        analysis_fig.add_trace(
+            go.Scatter(
+                x=x_values,
+                y=y_seg,
+                name='Segmented Area',
+                line=dict(color='red'),
+                hovertemplate='Image %{x}<br>Area: %{y:,.0f} pixels<extra></extra>'
+            ),
+            secondary_y=True
+        )
+        
+        # Water Clarity Index trace (primary y-axis)
+        y_wci = [results_cache['results'][img]['water_clarity_index']['score'] for img in images]
+        analysis_fig.add_trace(
+            go.Scatter(
+                x=x_values,
+                y=y_wci,
+                name='Water Clarity',
+                line=dict(color='green'),
+                hovertemplate='Image %{x}<br>Score: %{y:.2f}<extra></extra>'
+            ),
+            secondary_y=False
+        )
+        
+        # Add baseline if provided
+        if baseline is not None:
+            analysis_fig.add_trace(
+                go.Scatter(
+                    x=[0, len(images)-1],
+                    y=[baseline, baseline],
+                    name='Baseline',
+                    line=dict(
+                        color='black',
+                        dash='dash',
+                    ),
+                    hovertemplate='Baseline: %{y:,.0f} pixels<extra></extra>'
+                ),
+                secondary_y=True
+            )
+        
+        # Always add all three current image markers
+        # Object Detection marker
+        analysis_fig.add_trace(
+            go.Scatter(
+                x=[current_index],
+                y=[y_od[current_index]],
+                mode='markers',
+                marker=dict(color='blue', size=12, symbol='x'),
+                name='Current Detection',
+                showlegend=False
+            ),
+            secondary_y=False
+        )
+        
+        # Segmentation marker
+        analysis_fig.add_trace(
+            go.Scatter(
+                x=[current_index],
+                y=[y_seg[current_index]],
+                mode='markers',
+                marker=dict(color='red', size=12, symbol='x'),
+                name='Current Area',
+                showlegend=False
+            ),
+            secondary_y=True
+        )
+        
+        # Water Clarity marker
+        analysis_fig.add_trace(
+            go.Scatter(
+                x=[current_index],
+                y=[y_wci[current_index]],
+                mode='markers',
+                marker=dict(color='green', size=12, symbol='x'),
+                name='Current Clarity',
+                showlegend=False
+            ),
+            secondary_y=False
+        )
+
+        # Update layout
+        analysis_fig.update_layout(
+            title='Multi-Model Analysis',
+            xaxis_title='Image Index',
+            hovermode='x unified',
+            showlegend=True,
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            clickmode='event'
+        )
+        
+        # Update y-axes titles
+        analysis_fig.update_yaxes(title_text="Detections / Water Clarity Score", secondary_y=False)
+        analysis_fig.update_yaxes(title_text="Segmented Area (pixels)", secondary_y=True)
+    
+    return analysis_fig
 
 if __name__ == '__main__':
     # multiprocessing.set_start_method('spawn', force=True)
