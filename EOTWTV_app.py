@@ -24,6 +24,7 @@ from dash.long_callback import DiskcacheLongCallbackManager
 import dash
 import plotly.graph_objects as go
 import webcolors
+from plotly.subplots import make_subplots
 
 
 # Add at the top of your file, after imports
@@ -577,145 +578,104 @@ def update_image(images, current_index, prev_clicks, next_clicks,
             if 0 <= clicked_index < len(images):
                 current_index = clicked_index
 
-    # Create analysis figure
-    analysis_fig = go.Figure()
-    active_toggle = toggle_state['active'] if toggle_state else None
+    # Create analysis figure with multiple y-axes
+    analysis_fig = make_subplots(specs=[[{"secondary_y": True}]])
     
-    if active_toggle == 'Object detection' and results_cache and results_cache['results']:
-        # Use cached results for the plot
+    if results_cache and results_cache['results']:
         x_values = list(range(len(images)))
-        y_values = [results_cache['results'][img]['detections'] for img in images]
         
-        analysis_fig.add_trace(go.Bar(
-            x=x_values,
-            y=y_values,
-            name='Detections',
-            hovertemplate='Image %{x}<br>Detections: %{y}<extra></extra>'
-        ))
-        
-        # Highlight current image
-        analysis_fig.add_trace(go.Scatter(
-            x=[current_index],
-            y=[results_cache['results'][images[current_index]]['detections']],
-            mode='markers',
-            marker=dict(
-                color='red',
-                size=12,
-                symbol='x'
+        # Object Detection trace (primary y-axis)
+        y_od = [results_cache['results'][img]['object_detection']['detections'] for img in images]
+        analysis_fig.add_trace(
+            go.Scatter(
+                x=x_values,
+                y=y_od,
+                name='Detections',
+                line=dict(color='blue'),
+                hovertemplate='Image %{x}<br>Detections: %{y}<extra></extra>'
             ),
-            name='Current Image'
-        ))
-        
-        analysis_fig.update_layout(
-            title='Number of Detections per Image',
-            xaxis_title='Image Index',
-            yaxis_title='Number of Detections',
-            showlegend=True,
-            plot_bgcolor='white',
-            paper_bgcolor='white',
-            clickmode='event'
+            secondary_y=False
         )
         
-    elif active_toggle == 'Segmentation' and results_cache and results_cache['results']:
+        # Segmentation trace (secondary y-axis)
+        y_seg = [results_cache['results'][img]['segmentation']['area'] for img in images]
+        analysis_fig.add_trace(
+            go.Scatter(
+                x=x_values,
+                y=y_seg,
+                name='Segmented Area',
+                line=dict(color='red'),
+                hovertemplate='Image %{x}<br>Area: %{y:,.0f} pixels<extra></extra>'
+            ),
+            secondary_y=True
+        )
+        
+        # Water Clarity Index trace (primary y-axis)
+        y_wci = [results_cache['results'][img]['water_clarity_index']['score'] for img in images]
+        analysis_fig.add_trace(
+            go.Scatter(
+                x=x_values,
+                y=y_wci,
+                name='Water Clarity',
+                line=dict(color='green'),
+                hovertemplate='Image %{x}<br>Score: %{y:.2f}<extra></extra>'
+            ),
+            secondary_y=False
+        )
+        
+        # Highlight current image
+        active_toggle = toggle_state['active'] if toggle_state else None
+        if active_toggle == 'Object detection':
+            analysis_fig.add_trace(
+                go.Scatter(
+                    x=[current_index],
+                    y=[y_od[current_index]],
+                    mode='markers',
+                    marker=dict(color='blue', size=12, symbol='x'),
+                    name='Current Image',
+                    showlegend=False
+                ),
+                secondary_y=False
+            )
+        elif active_toggle == 'Segmentation':
+            analysis_fig.add_trace(
+                go.Scatter(
+                    x=[current_index],
+                    y=[y_seg[current_index]],
+                    mode='markers',
+                    marker=dict(color='red', size=12, symbol='x'),
+                    name='Current Image',
+                    showlegend=False
+                ),
+                secondary_y=True
+            )
+        elif active_toggle == 'Water Clarity Index':
+            analysis_fig.add_trace(
+                go.Scatter(
+                    x=[current_index],
+                    y=[y_wci[current_index]],
+                    mode='markers',
+                    marker=dict(color='green', size=12, symbol='x'),
+                    name='Current Image',
+                    showlegend=False
+                ),
+                secondary_y=False
+            )
 
-        all_areas = [results_cache['results'][k]['area'] for k in results_cache['results'].keys()]
-        # print(f"All areas: {all_areas}, {current_index}")
-        # Create line plot of segmented area
-        analysis_fig.add_trace(go.Scatter(
-            x=list(range(len(images))),
-            y=all_areas,
-            mode='lines+markers',
-            name='Segmented Area',
-            hovertemplate='Image %{x}<br>Area: %{y:,.0f} pixels<extra></extra>'
-        ))
-        
-        # Baseline for the plot
-        y = 1500000
-        analysis_fig.add_trace(go.Scatter(
-            x=[0, len(images)],
-            y=[y, y],
-            mode='lines',
-            name='Baseline',
-            line=dict(dash='dash', 
-                      color='black')
-        ))
-
-        # Highlight current image
-        analysis_fig.add_trace(go.Scatter(
-            x=[current_index],
-            y=[all_areas[current_index]],
-            mode='markers',
-            marker=dict(
-                color='red',
-                size=12,
-                symbol='x'
-            ),
-            name='Current Image'
-        ))
-        
+        # Update layout
         analysis_fig.update_layout(
-            title='Segmented Area Over Time',
+            title='Multi-Model Analysis',
             xaxis_title='Image Index',
-            yaxis_title='Area (pixels)',
+            hovermode='x unified',
             showlegend=True,
             plot_bgcolor='white',
             paper_bgcolor='white',
             clickmode='event'
         )
-            
-    elif active_toggle == 'Water Clarity Index' and results_cache and results_cache['results']:
-        # Use cached results for the plot
-        x_values = list(range(len(images)))
-        y_values = [results_cache['results'][img]['score'] for img in images]
-        colors = [results_cache['results'][img]['color'] for img in images]
         
-        analysis_fig.add_trace(go.Scatter(
-            x=x_values,
-            y=y_values,
-            mode='lines+markers',
-            name='Water Clarity Score',
-            hovertemplate='Image %{x}<br>Score: %{y:.2f}<br>Color: %{customdata}<extra></extra>',
-            customdata=colors
-        ))
-        
-        # Highlight current image
-        analysis_fig.add_trace(go.Scatter(
-            x=[current_index],
-            y=[results_cache['results'][images[current_index]]['score']],
-            mode='markers',
-            marker=dict(
-                color='red',
-                size=12,
-                symbol='x'
-            ),
-            name='Current Image'
-        ))
-        
-        analysis_fig.update_layout(
-            title='Water Clarity Score Timeline',
-            xaxis_title='Image Index',
-            yaxis_title='Water Clarity Score',
-            yaxis=dict(range=[0, 1.2]),
-            showlegend=True,
-            plot_bgcolor='white',
-            paper_bgcolor='white',
-            clickmode='event'
-        )
-    
-    else:
-        # Default empty plot with message
-        analysis_fig.update_layout(
-            title=f'Analysis plot',
-            xaxis=dict(visible=False),
-            yaxis=dict(visible=False),
-            annotations=[dict(
-                text="Please select a analysis model first.",
-                xref="paper",
-                yref="paper",
-                showarrow=False,
-                font=dict(size=20)
-            )]
-        )
+        # Update y-axes titles
+        analysis_fig.update_yaxes(title_text="Detections / Water Clarity Score", secondary_y=False)
+        analysis_fig.update_yaxes(title_text="Segmented Area (pixels)", secondary_y=True)
 
     # Get current image path and basic info
     image_path = os.path.join(image_parent_folder, selected_l1_folder, selected_l2_folder, images[current_index])
@@ -935,102 +895,82 @@ def update_wci_settings(wci_options, toggle_state, current_settings):
 @app.callback(
     Output('processed-results-cache', 'data'),
     Input('folder-dropdown-l2', 'value'),
-    Input('toggle-state', 'data'),
     Input('settings-store', 'data'),
     State('folder-dropdown-l1', 'value'),
     prevent_initial_call=True,
-    memoize=True  # Add memoization
+    memoize=True
 )
-def cache_processed_results(selected_l2_folder, toggle_state, settings_store, selected_l1_folder):
+def cache_processed_results(selected_l2_folder, settings_store, selected_l1_folder):
     if not selected_l2_folder or not selected_l1_folder:
-        app.cached_results = None  # Clear cache when no folder selected
         return {
             'folder_path': None,
-            'active_toggle': None,
             'settings': None,
             'results': {}
         }
     
-    active_toggle = toggle_state['active'] if toggle_state else None
     folder_path = os.path.join(image_parent_folder, selected_l1_folder, selected_l2_folder)
-    
     seg_cache_folder = os.path.join("cache/segmentation", selected_l1_folder, selected_l2_folder)
     os.makedirs(seg_cache_folder, exist_ok=True)
 
-    # Create cache key from current state
     current_state = {
         'folder_path': folder_path,
-        'active_toggle': active_toggle,
-        'settings': settings_store.get(active_toggle, {}) if active_toggle else None,
+        'settings': settings_store,
         'results': {}
     }
     
-    if not active_toggle:
-        return current_state
-    
-    # print(f"Processing results for all images in {folder_path} for {active_toggle}")
     images = get_images(folder_path)
     
-    # Process all images
+    # Process all images with all models
     for img_name in images:
         img_path = os.path.join(folder_path, img_name)
         img = Image.open(img_path)
+        current_state['results'][img_name] = {}
         
-        if active_toggle == 'Object detection':
-            result = models['object_detection'].predict(
+        # Object Detection
+        od_result = models['object_detection'].predict(
+            img,
+            conf=settings_store['Object detection']['confidence'],
+            verbose=False
+        )
+        detected_classes = [models['object_detection'].names[cls] for cls in od_result[0].boxes.cls.cpu().tolist()]
+        detected_confidences = od_result[0].boxes.conf.cpu().tolist()
+        current_state['results'][img_name]['object_detection'] = {
+            'detections': len(od_result[0].boxes.cls),
+            'detected_classes': detected_classes,
+            'detected_confidences': detected_confidences
+        }
+        
+        # Segmentation
+        cache_path = os.path.join(seg_cache_folder, f"{os.path.basename(img_path).lower().replace('.jpg', '.npy').replace('.jpeg', '.npy').replace('.png', '.npy')}")
+        if not os.path.exists(cache_path):
+            seg_result = models['segmentation'].predict(
                 img,
-                conf=settings_store['Object detection']['confidence'],
+                points=[[img.size[0]//2 + 0, img.size[1]//4 * 3 + 0],
+                        [img.size[0]//2 + 10, img.size[1]//4 * 3 + 10],
+                        [img.size[0]//2 - 10, img.size[1]//4 * 3 - 10],
+                        [img.size[0]//2 + 10, img.size[1]//4 * 3 - 10],
+                        [img.size[0]//2 - 10, img.size[1]//4 * 3 + 10]],
                 verbose=False
             )
-            detected_classes = [models['object_detection'].names[cls] for cls in result[0].boxes.cls.cpu().tolist()]
-            detected_confidences = result[0].boxes.conf.cpu().tolist()
+            idx_with_biggest_area = np.argmax(seg_result[0].masks.data.cpu().numpy().sum(axis=(1, 2)))
+            np.save(cache_path, seg_result[0].masks.data.cpu().numpy()[idx_with_biggest_area])
+        
+        single_mask = np.load(cache_path)
+        current_state['results'][img_name]['segmentation'] = {
+            'area': float(single_mask.sum())  # Convert to float for JSON serialization
+        }
 
-            current_state['results'][img_name] = {
-                'detections': len(result[0].boxes.cls),
-                'detected_classes': detected_classes,
-                'detected_confidences': detected_confidences
-            }
-            
-        elif active_toggle == 'Segmentation':
-            
-            cache_path = os.path.join(seg_cache_folder, f"{os.path.basename(img_path).lower().replace('.jpg', '.npy').replace('.jpeg', '.npy').replace('.png', '.npy')}")
-            if not os.path.exists(cache_path):
-                result = models['segmentation'].predict(
-                    img,
-                    points=[[img.size[0]//2 + 0, img.size[1]//4 * 3 + 0],
-                            [img.size[0]//2 + 10, img.size[1]//4 * 3 + 10],
-                            [img.size[0]//2 - 10, img.size[1]//4 * 3 - 10],
-                            [img.size[0]//2 + 10, img.size[1]//4 * 3 - 10],
-                            [img.size[0]//2 - 10, img.size[1]//4 * 3 + 10],
-                            
-                            ], # Center of the image (shape: h x w)
-                    # conf=settings_store['Segmentation']['confidence'],
-                    verbose=False
-                )
-
-                idx_with_biggest_area = np.argmax(result[0].masks.data.cpu().numpy().sum(axis=(1, 2)))
-                np.save(cache_path, result[0].masks.data.cpu().numpy()[idx_with_biggest_area])
-            
-            single_mask = np.load(cache_path)
-            current_state['results'][img_name] = {
-                'area': single_mask.sum()
-            }
-
-
-        elif active_toggle == 'Water Clarity Index':
-            result = models['water_quality_index'].predict(img, verbose=False)
-            probs = result[0].probs.data.cpu().numpy()
-            overall_score = 1 * probs[0] + 0.5 * probs[1] + 0.0 * probs[2]
-            overall_color = np.mean(result[0].orig_img, axis=(0, 1)).astype(np.uint8)
-            _, closest_name = get_colour_name(overall_color)
-            
-            current_state['results'][img_name] = {
-                'score': float(overall_score),
-                'color': closest_name
-            }
-    
-    # print(f"Results cached for {len(images)} images")
-    # print(current_state['results'])
+        # Water Clarity Index
+        wci_result = models['water_quality_index'].predict(img, verbose=False)
+        probs = wci_result[0].probs.data.cpu().numpy()
+        overall_score = 1 * probs[0] + 0.5 * probs[1] + 0.0 * probs[2]
+        overall_color = np.mean(wci_result[0].orig_img, axis=(0, 1)).astype(np.uint8)
+        _, closest_name = get_colour_name(overall_color)
+        
+        current_state['results'][img_name]['water_clarity_index'] = {
+            'score': float(overall_score),
+            'color': closest_name
+        }
 
     return current_state
 # endregion
@@ -1070,9 +1010,9 @@ def download_results(n_clicks, results_cache, folder_l1, folder_l2, toggle_state
         df = pd.DataFrame([
             {
                 'Image': img_name,
-                'Number_of_Detections': data['detections'],
-                'Detected_Classes': ', '.join(data['detected_classes']),
-                'Confidences': ', '.join([f'{conf:.2f}' for conf in data['detected_confidences']])
+                'Number_of_Detections': data['object_detection']['detections'],
+                'Detected_Classes': ', '.join(data['object_detection']['detected_classes']),
+                'Confidences': ', '.join([f'{conf:.2f}' for conf in data['object_detection']['detected_confidences']])
             }
             for img_name, data in results_cache['results'].items()
         ])
@@ -1081,7 +1021,7 @@ def download_results(n_clicks, results_cache, folder_l1, folder_l2, toggle_state
         df = pd.DataFrame([
             {
                 'Image': img_name,
-                'Segmented_Area': data['area']
+                'Segmented_Area': data['segmentation']['area']
             }
             for img_name, data in results_cache['results'].items()
         ])
@@ -1090,8 +1030,8 @@ def download_results(n_clicks, results_cache, folder_l1, folder_l2, toggle_state
         df = pd.DataFrame([
             {
                 'Image': img_name,
-                'Water_Clarity_Score': data['score'],
-                'Dominant_Color': data['color']
+                'Water_Clarity_Score': data['water_clarity_index']['score'],
+                'Dominant_Color': data['water_clarity_index']['color']
             }
             for img_name, data in results_cache['results'].items()
         ])
