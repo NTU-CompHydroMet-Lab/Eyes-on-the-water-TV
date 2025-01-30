@@ -375,55 +375,83 @@ app.layout = html.Div([
     
     # Main content area
     html.Div([
-        # Left section - Image display only
+        # Analysis plot at the top
         html.Div([
-            # Image display using html.Img
-            html.Img(
-                id='displayed-image',
-                style={'width': '100%', 'maxHeight': '60vh', 'objectFit': 'contain'}
-            ),
-        ], style={'width': '60%', 'display': 'inline-block', 'verticalAlign': 'top'}),
-        
-        # Right section - Analysis plot, info and settings
-        html.Div([
-            # Analysis plot at the top (without loading)
             dcc.Graph(
                 id='analysis-plot',
                 config={'displayModeBar': True},
-                style={'height': '30vh', 'marginBottom': '20px'}
+                style={
+                    'height': '30vh',
+                    'width': '100%',
+                    'marginBottom': '20px'
+                }
             ),
-            
-            # Image info section
+        ], style={
+            'width': '100%',
+            'marginBottom': '20px'
+        }),
+        
+        # Image and Info container
+        html.Div([
+            # Left section - Image display
             html.Div([
-                html.H4('Image Information'),
-                html.Div(id='image-info'),
-            ]),
-            
-            # Settings section
-            html.Div([
-                html.H4('Settings'),
-                html.Div(id='settings-container', style={'display': 'none'})
-            ]),
-            
-            # Add Download section
-            html.Div([
-                html.Button(
-                    'Save Results', 
-                    id='save-results-button',
-                    disabled=True,  # Initially disabled
+                html.Img(
+                    id='displayed-image',
                     style={
-                        'margin': '1rem 0',
-                        'padding': '0.5rem 1rem',
-                        'backgroundColor': '#6c757d',  # Initially grey
-                        'color': 'white',
-                        'border': 'none',
-                        'borderRadius': '0.25rem',
-                        'cursor': 'not-allowed',  # Show not-allowed cursor when disabled
+                        'width': '100%',
+                        'maxHeight': '60vh',
+                        'objectFit': 'contain'
                     }
                 ),
-                dcc.Download(id='download-results')
-            ], style={'marginTop': '1rem'}),
-        ], style={'width': '35%', 'display': 'inline-block', 'marginLeft': '5%'})
+            ], style={
+                'width': '80%',
+                'display': 'inline-block',
+                'verticalAlign': 'top'
+            }),
+            
+            # Right section - Info and settings
+            html.Div([
+                # Image info section
+                html.Div([
+                    html.H4('Image Information'),
+                    html.Div(id='image-info'),
+                ]),
+                
+                # Settings section
+                html.Div([
+                    html.H4('Settings'),
+                    html.Div(id='settings-container', style={'display': 'none'})
+                ]),
+                
+                # Download section
+                html.Div([
+                    html.Button(
+                        'Save Results', 
+                        id='save-results-button',
+                        disabled=True,
+                        style={
+                            'margin': '1rem 0',
+                            'padding': '0.5rem 1rem',
+                            'backgroundColor': '#6c757d',
+                            'color': 'white',
+                            'border': 'none',
+                            'borderRadius': '0.25rem',
+                            'cursor': 'not-allowed',
+                        }
+                    ),
+                    dcc.Download(id='download-results')
+                ], style={'marginTop': '1rem'}),
+            ], style={
+                'width': '18%',
+                'display': 'inline-block',
+                'marginLeft': '2%',
+                'verticalAlign': 'top'
+            })
+        ], style={
+            'width': '100%',
+            'display': 'flex',
+            'alignItems': 'start'
+        }),
     ]),
     
     # Add store for click data
