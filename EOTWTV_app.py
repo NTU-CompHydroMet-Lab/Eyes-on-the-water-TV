@@ -361,7 +361,9 @@ app.layout = html.Div([
                 
                 # Action buttons section
                 html.Div([
+                    
                     html.Button(
+                        # 2 lines
                         'Set Current as Baseline', 
                         id='set-baseline-button',
                         disabled=True,
@@ -372,6 +374,7 @@ app.layout = html.Div([
                             'backgroundColor': '#28a745',
                             'color': 'white',
                             'border': 'none',
+                            "white-space": "pre",
                             'borderRadius': '0.25rem',
                             'cursor': 'pointer',
                         }
@@ -997,24 +1000,61 @@ def handle_baseline_setting(n_clicks, toggle_state, level1_folder, images, curre
     ctx = dash.callback_context
     trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
     
-    # Enable button if we have valid data, regardless of toggle state
-    button_disabled = not images or not level1_folder or not results_cache or not results_cache['results']
+    # Enable button only when Segmentation is active
+    button_disabled = (not toggle_state or 
+                      toggle_state['active'] != 'Segmentation' or 
+                      not images or 
+                      not level1_folder or 
+                      not results_cache or 
+                      not results_cache['results'])
     
     # Initialize with current plot
     analysis_fig = dash.no_update
     
     if trigger_id == 'set-baseline-button' and n_clicks and not button_disabled and images:
         current_image = images[current_index]
-        current_area = results_cache['results'][current_image]['segmentation']['area']
-        set_baseline(level1_folder, current_area)
-        current_baselines = load_baselines()
-        
-        # Create updated plot
-        analysis_fig = create_analysis_plot(
-            results_cache, images, current_index, toggle_state, current_area
-        )
+        if current_image in results_cache['results']:
+            current_area = results_cache['results'][current_image]['segmentation']['area']
+            set_baseline(level1_folder, current_area)
+            current_baselines = load_baselines()
+            
+            # Create updated plot
+            analysis_fig = create_analysis_plot(
+                results_cache, images, current_index, toggle_state, current_area
+            )
     
     return current_baselines, button_disabled, analysis_fig
+
+# Add callback to update set-baseline button state based on toggle
+@app.callback(
+    Output('set-baseline-button', 'style'),
+    Input('toggle-state', 'data')
+)
+def update_baseline_button_style(toggle_state):
+    base_style = {
+        'width': '100%',
+        'marginBottom': '10px',
+        'padding': '5px',
+        'color': 'white',
+        'border': 'none',
+        'borderRadius': '0.25rem',
+        'cursor': 'pointer',
+    }
+    
+    if toggle_state and toggle_state['active'] == 'Segmentation':
+        return {
+            **base_style,
+            'backgroundColor': '#28a745',  # Green
+            'opacity': '1',
+            'cursor': 'pointer',
+        }
+    else:
+        return {
+            **base_style,
+            'backgroundColor': '#6c757d',  # Grey
+            'opacity': '0.65',
+            'cursor': 'not-allowed',
+        }
 
 # Add a new helper function to create the analysis plot
 def create_analysis_plot(results_cache, images, current_index, toggle_state, baseline=None):
@@ -1126,7 +1166,14 @@ def create_analysis_plot(results_cache, images, current_index, toggle_state, bas
             showlegend=True,
             plot_bgcolor='white',
             paper_bgcolor='white',
-            clickmode='event'
+            clickmode='event',
+            legend=dict(
+                orientation="h",  # horizontal orientation
+                yanchor="bottom",
+                y=-0.2,  # position below the plot
+                xanchor="center",
+                x=0.5    # centered horizontally
+            )
         )
         
         # Update y-axes titles
