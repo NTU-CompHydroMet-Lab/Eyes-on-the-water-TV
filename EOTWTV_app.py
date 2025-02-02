@@ -27,6 +27,7 @@ import dash
 import plotly.graph_objects as go
 import webcolors
 from plotly.subplots import make_subplots
+import dash_bootstrap_components as dbc
 
 
 # Add at the top of your file, after imports
@@ -34,8 +35,12 @@ cache = diskcache.Cache("./cache")
 long_callback_manager = DiskcacheLongCallbackManager(cache)
 
 # Initialize the Dash app
-app = dash.Dash(__name__, suppress_callback_exceptions=True,
-                long_callback_manager=long_callback_manager)
+app = dash.Dash(
+    __name__, 
+    suppress_callback_exceptions=True,
+    long_callback_manager=long_callback_manager,
+    external_stylesheets=[dbc.themes.BOOTSTRAP]
+)
 
 # Add custom CSS as an external stylesheet
 app.index_string = '''
@@ -361,24 +366,35 @@ app.layout = html.Div([
                 
                 # Action buttons section
                 html.Div([
-                    
-                    html.Button(
-                        # 2 lines
-                        'Set Current as Baseline', 
-                        id='set-baseline-button',
-                        disabled=True,
-                        style={
-                            'width': '100%',
-                            'marginBottom': '10px',
-                            'padding': '5px',
-                            'backgroundColor': '#28a745',
-                            'color': 'white',
-                            'border': 'none',
-                            "white-space": "pre",
-                            'borderRadius': '0.25rem',
-                            'cursor': 'pointer',
-                        }
-                    ),
+                    html.Div([
+                        html.Button(
+                            'Set Current as Baseline', 
+                            id='set-baseline-button',
+                            disabled=True,
+                            style={
+                                'width': '100%',
+                                'marginBottom': '10px',
+                                'padding': '5px',
+                                'backgroundColor': '#28a745',
+                                'color': 'white',
+                                'border': 'none',
+                                "white-space": "pre",
+                                'borderRadius': '0.25rem',
+                                'cursor': 'pointer',
+                            },
+                        ),
+                        dbc.Tooltip(
+                            "Please toggle segmentation model first",
+                            target="set-baseline-button",
+                            placement="top",
+                            style={
+                                "backgroundColor": "#6c757d",
+                                "color": "white",
+                                "fontSize": "0.9rem",
+                                "padding": "8px",
+                            }
+                        ),
+                    ], style={'width': '100%'}),
                     html.Button(
                         'Save Results', 
                         id='save-results-button',
