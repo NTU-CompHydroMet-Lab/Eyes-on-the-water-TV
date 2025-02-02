@@ -72,7 +72,9 @@ DEFAULT_SETTINGS = {
         'show_overlay': True,
     },
     'Segmentation': {
-        'show_overlay': True
+        'show_overlay': True,
+        'point_x': 0.5,  # Default center position (50%)
+        'point_y': 0.6   # Default position at 60% height
     },
     'Water Clarity Index': {
         'show_score': True,
@@ -163,14 +165,10 @@ def process_image(img, active_toggle, models, settings_store, img_path=None):
     
     # Check if image is in cache
     if cache_key in app.image_cache:
-        # print(f"Using cached image for {os.path.basename(img_path)}")
         return app.image_cache[cache_key]
-    
-    # print(f"Processing image {os.path.basename(img_path)}")
     
     # Process image as before
     settings = settings_store[active_toggle]
-    # print(settings)
     draw = ImageDraw.Draw(img)
     fnt = ImageFont.truetype("Pillow/Tests/fonts/FreeMono.ttf", 80)
     
@@ -187,19 +185,39 @@ def process_image(img, active_toggle, models, settings_store, img_path=None):
         
     elif active_toggle == 'Segmentation':
         if settings['show_overlay']:
+            # Get point settings
+            point_x = settings['point_x']
+            point_y = settings['point_y']
+            
+            # Update cache folder path to include point coordinates
             cache_folder = img_path.replace('/home/NAS/homes/isaac-10009/Data/EOTW-TV/App_demo_data/', '')
             cache_folder = cache_folder.rsplit('/', 1)[0]
+            seg_cache_folder = os.path.join(
+                "cache/segmentation",
+                cache_folder,
+                f"point_{point_x:.2f}_{point_y:.2f}"
+            )
+            os.makedirs(seg_cache_folder, exist_ok=True)
 
-            os.makedirs(f"cache/segmentation/{cache_folder}", exist_ok=True)
-
-            # Replace ".jpg" or ".jpeg" or ".png" with ".npy"
-            mask_path = f"cache/segmentation/{cache_folder}/{os.path.basename(img_path).lower().replace('.jpg', '.npy').replace('.jpeg', '.npy').replace('.png', '.npy')}"
+            # Update mask path
+            mask_path = os.path.join(
+                seg_cache_folder,
+                os.path.basename(img_path).lower().replace('.jpg', '.npy').replace('.jpeg', '.npy').replace('.png', '.npy')
+            )
             
             if not os.path.exists(mask_path):
-                results     = models['segmentation'].predict(img, verbose=False)
+                # Calculate point position based on image size
+                point_x_px = int(img.size[0] * point_x)
+                point_y_px = int(img.size[1] * point_y)
+                
+                # print(f"Using point: ({point_x_px}, {point_y_px})")
+                
+                results = models['segmentation'].predict(
+                    img,
+                    points=[[point_x_px, point_y_px]],
+                    verbose=False
+                )
                 single_mask = results[0].masks.data.cpu().numpy()[0]
-
-                # Save the mask to a np file
                 np.save(mask_path, single_mask)
                 print(f"Saved mask to {mask_path}")
             
@@ -227,9 +245,25 @@ def process_image(img, active_toggle, models, settings_store, img_path=None):
 
             # Convert back to uint8 and PIL Image
             img = Image.fromarray(np.uint8(blended))
-
-        
-        
+            
+            # Draw the point marker
+            draw = ImageDraw.Draw(img)
+            point_x_px = int(img.size[0] * point_x)
+            point_y_px = int(img.size[1] * point_y)
+            
+            # 1% of the image size
+            marker_size = int(img.size[0] * 0.01)
+            
+            # Draw a cross marker with white outline
+            draw.line((point_x_px - marker_size, point_y_px, point_x_px + marker_size, point_y_px), 
+                     fill='green', width=5)
+            draw.line((point_x_px, point_y_px - marker_size, point_x_px, point_y_px + marker_size), 
+                     fill='green', width=5)
+            
+            # Draw a circle around the cross
+            draw.ellipse((point_x_px - marker_size, point_y_px - marker_size, 
+                         point_x_px + marker_size, point_y_px + marker_size), 
+                        outline='white', width=4)
         
     elif active_toggle == 'Water Clarity Index':
         results = models['water_quality_index'].predict(img, verbose=False)
@@ -698,6 +732,30 @@ def update_settings_container(toggle_state, current_settings):
     elif active_toggle == 'Segmentation':
         return html.Div([
             html.Div([
+                html.Label(f'Point X Position: {settings["point_x"]:.2f}'),
+                dcc.Slider(
+                    id='point-x-slider',
+                    min=0,
+                    max=1,
+                    step=0.05,
+                    value=settings['point_x'],
+                    marks={i/10: f'{i/10:.1f}' for i in range(0, 11, 2)},
+                ),
+            ], style={'marginBottom': '1rem'}),
+            
+            html.Div([
+                html.Label(f'Point Y Position: {settings["point_y"]:.2f}'),
+                dcc.Slider(
+                    id='point-y-slider',
+                    min=0,
+                    max=1,
+                    step=0.05,
+                    value=settings['point_y'],
+                    marks={i/10: f'{i/10:.1f}' for i in range(0, 11, 2)},
+                ),
+            ], style={'marginBottom': '1rem'}),
+            
+            html.Div([
                 dcc.Checklist(
                     id='seg-display-options',
                     options=[
@@ -755,30 +813,31 @@ def update_object_detection_settings(conf, od_options, toggle_state, current_set
 @app.callback(
     Output('settings-store', 'data', allow_duplicate=True),
     [
-        # Input('threshold-good', 'value'),
-        # Input('threshold-medium', 'value'),
+        Input('point-x-slider', 'value'),
+        Input('point-y-slider', 'value'),
         Input('seg-display-options', 'value')
         ],
     State('toggle-state', 'data'),
     State('settings-store', 'data'),
     prevent_initial_call=True
 )
-def update_segmentation_settings(seg_options, toggle_state, current_settings):
+def update_segmentation_settings(point_x, point_y, seg_options, toggle_state, current_settings):
     if not toggle_state['active'] or toggle_state['active'] != 'Segmentation':
         return dash.no_update
     
     current_settings['Segmentation'].update({
+        'point_x': point_x if point_x is not None else current_settings['Segmentation']['point_x'],
+        'point_y': point_y if point_y is not None else current_settings['Segmentation']['point_y'],
         'show_overlay': 'show_overlay' in (seg_options or [])
     })
     return current_settings
+
 # endregion
 
 # region Callback for Water Clarity Index settings
 @app.callback(
     Output('settings-store', 'data', allow_duplicate=True),
     [
-        # Input('threshold-good', 'value'),
-        # Input('threshold-medium', 'value'),
         Input('wci-display-options', 'value')
         ],
     State('toggle-state', 'data'),
@@ -790,8 +849,6 @@ def update_wci_settings(wci_options, toggle_state, current_settings):
         return dash.no_update
 
     current_settings['Water Clarity Index'].update({
-        # 'threshold_good': thresh_good if thresh_good is not None else current_settings['Water Clarity Index']['threshold_good'],
-        # 'threshold_medium': thresh_med if thresh_med is not None else current_settings['Water Clarity Index']['threshold_medium'],
         'show_score': 'show_score' in (wci_options or [])
     })
 
@@ -816,7 +873,16 @@ def cache_processed_results(selected_l2_folder, settings_store, selected_l1_fold
         }
     
     folder_path = os.path.join(image_parent_folder, selected_l1_folder, selected_l2_folder)
-    seg_cache_folder = os.path.join("cache/segmentation", selected_l1_folder, selected_l2_folder)
+    
+    # Include point coordinates in cache path for segmentation
+    point_x = settings_store['Segmentation']['point_x']
+    point_y = settings_store['Segmentation']['point_y']
+    seg_cache_folder = os.path.join(
+        "cache/segmentation", 
+        selected_l1_folder, 
+        selected_l2_folder,
+        f"point_{point_x:.2f}_{point_y:.2f}"
+    )
     os.makedirs(seg_cache_folder, exist_ok=True)
 
     current_state = {
@@ -848,21 +914,24 @@ def cache_processed_results(selected_l2_folder, settings_store, selected_l1_fold
         }
         
         # Segmentation
-        cache_path = os.path.join(seg_cache_folder, f"{os.path.basename(img_path).lower().replace('.jpg', '.npy').replace('.jpeg', '.npy').replace('.png', '.npy')}")
-        if not os.path.exists(cache_path):
+        mask_path = os.path.join(seg_cache_folder, os.path.basename(img_path).lower().replace('.jpg', '.npy').replace('.jpeg', '.npy').replace('.png', '.npy'))
+        
+        if not os.path.exists(mask_path):
+            # Calculate point position based on image size and settings
+            point_x = int(img.size[0] * settings_store['Segmentation']['point_x'])
+            point_y = int(img.size[1] * settings_store['Segmentation']['point_y'])
+
+            print(f"Using point: ({point_x}, {point_y})")
+            
             seg_result = models['segmentation'].predict(
                 img,
-                points=[[img.size[0]//2 + 0, img.size[1]//4 * 3 + 0],
-                        [img.size[0]//2 + 10, img.size[1]//4 * 3 + 10],
-                        [img.size[0]//2 - 10, img.size[1]//4 * 3 - 10],
-                        [img.size[0]//2 + 10, img.size[1]//4 * 3 - 10],
-                        [img.size[0]//2 - 10, img.size[1]//4 * 3 + 10]],
+                points=[[point_x, point_y]],
                 verbose=False
             )
             idx_with_biggest_area = np.argmax(seg_result[0].masks.data.cpu().numpy().sum(axis=(1, 2)))
-            np.save(cache_path, seg_result[0].masks.data.cpu().numpy()[idx_with_biggest_area])
+            np.save(mask_path, seg_result[0].masks.data.cpu().numpy()[idx_with_biggest_area])
         
-        single_mask = np.load(cache_path)
+        single_mask = np.load(mask_path)
         current_state['results'][img_name]['segmentation'] = {
             'area': float(single_mask.sum())  # Convert to float for JSON serialization
         }
