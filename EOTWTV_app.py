@@ -5,6 +5,7 @@ import diskcache
 import os
 import multiprocessing
 import time
+from tqdm import tqdm
 import matplotlib.pyplot as plt
 import cv2
 from baseline_config import load_baselines, set_baseline, get_baseline
@@ -63,7 +64,7 @@ app.index_string = '''
 </html>
 '''
 
-image_parent_folder = '/home/NAS/homes/isaac-10009/Data/EOTW-TV/App_demo_data'
+image_parent_folder = '/home/NAS/homes/isaac-10009/Data/EOTW-TV/App_demo_data/'
 
 # Add default settings
 DEFAULT_SETTINGS = {
@@ -342,6 +343,18 @@ app.layout = html.Div([
                 # Folder selection section
                 html.Div([
                     html.H4('Folder Selection'),
+                    # Parent folder selection
+                    html.Div([
+                        html.Label('Parent Folder:'),
+                        dcc.Input(
+                            id='parent-folder-input',
+                            type='text',
+                            value=image_parent_folder,
+                            placeholder='Enter parent folder path',
+                            style={'width': '100%', 'marginBottom': '10px'}
+                        ),
+                    ]),
+                    
                     # Level 1 folder dropdown
                     html.Div([
                         html.Label('Main Folder:'),
@@ -490,17 +503,28 @@ models = model_init()
 
 # region Callback to update folder options
 @app.callback(
-    Output('folder-dropdown-l1', 'options'),
-    Output('folder-dropdown-l1', 'value'),
+    Output('folder-dropdown-l1', 'options', allow_duplicate=True),
+    Output('folder-dropdown-l1', 'value', allow_duplicate=True),
     Output({'type': 'toggle-button', 'index': ALL}, 'style', allow_duplicate=True),
     Output('toggle-state', 'data', allow_duplicate=True),
-    Input('folder-dropdown-l1', 'value'),  # Dummy input to initialize
-    prevent_initial_call='initial_duplicate'
+    Input('parent-folder-input', 'value'),
+    prevent_initial_call="initial_duplicate"
 )
-def update_l1_folder_options(selected_l1_folder):
-    parent_folder = image_parent_folder  # Your level 1 folder path
-    folders = get_subfolders(parent_folder)
+def update_folders_from_parent(parent_path):
+    if not parent_path or not os.path.exists(parent_path):
+        return [], None, [base_style for _ in range(3)], {'active': None}
+    
 
+    if parent_path[-1] != '/':
+        parent_path = parent_path + '/'
+
+    # Update global variable
+    global image_parent_folder
+    image_parent_folder = parent_path
+    
+    # Get folders from new parent path
+    folders = get_subfolders(parent_path)
+    
     base_style = {
         'margin': '0.5rem',
         'padding': '0.5rem 1rem',
@@ -508,10 +532,11 @@ def update_l1_folder_options(selected_l1_folder):
         'flex': '1',
     }
 
-    return ([{'label': folder, 'value': folder} for folder in folders], 
-            selected_l1_folder if selected_l1_folder else None, 
-            [base_style for _ in range(3)],
-            {'active': None},
+    return (
+        [{'label': folder, 'value': folder} for folder in folders],
+        None,
+        [base_style for _ in range(3)],
+        {'active': None}
     )
 
 @app.callback(
@@ -894,7 +919,7 @@ def cache_processed_results(selected_l2_folder, settings_store, selected_l1_fold
     images = get_images(folder_path)
     
     # Process all images with all models
-    for img_name in images:
+    for img_name in tqdm(images):
         img_path = os.path.join(folder_path, img_name)
         img = Image.open(img_path)
         current_state['results'][img_name] = {}
@@ -921,7 +946,7 @@ def cache_processed_results(selected_l2_folder, settings_store, selected_l1_fold
             point_x = int(img.size[0] * settings_store['Segmentation']['point_x'])
             point_y = int(img.size[1] * settings_store['Segmentation']['point_y'])
 
-            print(f"Using point: ({point_x}, {point_y})")
+            # print(f"Using point: ({point_x}, {point_y})")
             
             seg_result = models['segmentation'].predict(
                 img,
