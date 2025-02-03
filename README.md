@@ -9,8 +9,8 @@
 2. Install the required packages:
    ```bash
    # You can either use the venv or conda environment
-   python -m venv EOTWTV_env_test
-   source EOTWTV_env_test/bin/activate   # On Windows use `env\Scripts\activate`
+   python -m venv EOTWTV_env
+   source EOTWTV_env/bin/activate   # On Windows use `env\Scripts\activate`
    pip install uv
    uv pip install -r requirements.txt
    

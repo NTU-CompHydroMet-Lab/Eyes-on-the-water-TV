@@ -1293,5 +1293,7 @@ def create_analysis_plot(results_cache, images, current_index, toggle_state, bas
     return analysis_fig
 
 if __name__ == '__main__':
-    # multiprocessing.set_start_method('spawn', force=True)
-    app.run_server(host="0.0.0.0", port="8051", debug=True)
+    # app.run_server(host="0.0.0.0", port="8051", debug=True)
+    
+    # Change the port if port 8051 is occupied
+    app.run_server(port="8051", debug=True)
