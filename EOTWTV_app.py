@@ -86,18 +86,19 @@ DEFAULT_SETTINGS = {
 def model_init():
 
     # Load the object detection model
-    object_detection_model = YOLO("models/yolo11x_obj_det.pt")
+    object_detection_model = YOLO("models/yolo11x.pt")
 
     # # Load the segmentation model
     sam2_segmentation_model = SAM("models/sam2.1_b.pt")
+    # sam2_segmentation_model = SAM("models/sam2.1_t.pt")
 
     # # Load the water Clarity Index model
-    water_quality_index_model = YOLO("models/WCI_cls_best.pt")
+    water_clearity_index_model = YOLO("models/WCI_cls_best.pt")
 
     return {
         'object_detection': object_detection_model,
         'segmentation': sam2_segmentation_model,
-        'water_quality_index': water_quality_index_model,
+        'water_clearity_index': water_clearity_index_model,
     }
 
 # region Segmentation functions
@@ -267,7 +268,7 @@ def process_image(img, active_toggle, models, settings_store, img_path=None):
                         outline='white', width=4)
         
     elif active_toggle == 'Water Clarity Index':
-        results = models['water_quality_index'].predict(img, verbose=False)
+        results = models['water_clearity_index'].predict(img, verbose=False)
         probs = results[0].probs.data.cpu().numpy()
         overall_score = 1 * probs[0] + 0.5 * probs[1] + 0.0 * probs[2]
         overall_color = np.mean(results[0].orig_img, axis=(0, 1)).astype(np.uint8)
@@ -917,7 +918,7 @@ def cache_processed_results(selected_l2_folder, settings_store, selected_l1_fold
     }
     
     images = get_images(folder_path)
-    
+
     # Process all images with all models
     for img_name in tqdm(images):
         img_path = os.path.join(folder_path, img_name)
@@ -946,8 +947,7 @@ def cache_processed_results(selected_l2_folder, settings_store, selected_l1_fold
             point_x = int(img.size[0] * settings_store['Segmentation']['point_x'])
             point_y = int(img.size[1] * settings_store['Segmentation']['point_y'])
 
-            # print(f"Using point: ({point_x}, {point_y})")
-            
+            # print(f"Segmentation prediction using point: ({point_x}, {point_y})")
             seg_result = models['segmentation'].predict(
                 img,
                 points=[[point_x, point_y]],
@@ -962,7 +962,7 @@ def cache_processed_results(selected_l2_folder, settings_store, selected_l1_fold
         }
 
         # Water Clarity Index
-        wci_result = models['water_quality_index'].predict(img, verbose=False)
+        wci_result = models['water_clearity_index'].predict(img, verbose=False)
         probs = wci_result[0].probs.data.cpu().numpy()
         overall_score = 1 * probs[0] + 0.5 * probs[1] + 0.0 * probs[2]
         overall_color = np.mean(wci_result[0].orig_img, axis=(0, 1)).astype(np.uint8)

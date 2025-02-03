@@ -1,0 +1,12 @@
+dash[diskcache]
+dash_bootstrap_components
+diskcache
+matplotlib
+numpy
+opencv-python
+pandas
+pillow
+plotly
+tqdm
+ultralytics
+webcolors

@@ -1,8 +1,13 @@
 cache/
 _test/
 model_development/
-models/
+
+models/sam2.1_b.pt
+models/sam2.1_t.pt
+models/yolo11x.pt
+
 EOTWTV_env/
+EOTWTV_env_test/
 misc/
 
 # Byte-compiled / optimized / DLL files
