@@ -6,6 +6,7 @@ batch_results/
 models/sam2.1_b.pt
 models/sam2.1_t.pt
 models/yolo11x.pt
+baselines.json
 
 EOTWTV_env/
 EOTWTV_env_test/
@@ -182,3 +183,4 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+baselines.json
