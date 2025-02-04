@@ -1,6 +1,7 @@
 cache/
 _test/
 model_development/
+batch_results/
 
 models/sam2.1_b.pt
 models/sam2.1_t.pt
