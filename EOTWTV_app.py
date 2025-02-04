@@ -193,11 +193,10 @@ def process_image(img, active_toggle, models, settings_store, img_path=None):
             point_x = settings['point_x']
             point_y = settings['point_y']
             
-            # Update cache folder path to include point coordinates
-            cache_folder = img_path.replace('/home/NAS/homes/isaac-10009/Data/EOTW-TV/App_demo_data/', '')
-            cache_folder = cache_folder.rsplit('/', 1)[0]
+            # Standardize cache path construction
+            cache_folder = os.path.dirname(img_path).replace(image_parent_folder, '').lstrip('/')
             seg_cache_folder = os.path.join(
-                "cache/segmentation",
+                "cache", "segmentation",
                 cache_folder,
                 f"point_{point_x:.2f}_{point_y:.2f}"
             )
@@ -737,7 +736,7 @@ def update_toggles(n_clicks_list, current_state):
 
     if not ctx.triggered:
         return [base_class for _ in range(3)], {'active': None}, {'display': 'none'}
-    
+
     if not ctx.triggered_id:
         return [base_class for _ in range(3)], {'active': None}, {'display': 'none'}
 
@@ -953,13 +952,13 @@ def cache_processed_results(images, settings_store, selected_l1_folder, selected
     
     folder_path = os.path.join(image_parent_folder, selected_l1_folder, selected_l2_folder)
     
-    # Process images and cache results
+    # Standardize cache path construction
+    cache_folder = os.path.join(selected_l1_folder, selected_l2_folder)
     point_x = settings_store['Segmentation']['point_x']
     point_y = settings_store['Segmentation']['point_y']
     seg_cache_folder = os.path.join(
-        "cache/segmentation", 
-        selected_l1_folder, 
-        selected_l2_folder,
+        "cache", "segmentation",
+        cache_folder,
         f"point_{point_x:.2f}_{point_y:.2f}"
     )
     os.makedirs(seg_cache_folder, exist_ok=True)
