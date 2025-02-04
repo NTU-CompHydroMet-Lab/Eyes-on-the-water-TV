@@ -173,7 +173,7 @@ def process_image(img, active_toggle, models, settings_store, img_path=None):
     settings = settings_store[active_toggle]
     draw = ImageDraw.Draw(img)
     # fnt = ImageFont.truetype("Pillow/Tests/fonts/FreeMono.ttf", 80)
-    fnt = ImageFont.ImageFont.load_default()
+    fnt = ImageFont.load_default(80)
     
     if active_toggle == 'Object detection':
         results = models['object_detection'].predict(
