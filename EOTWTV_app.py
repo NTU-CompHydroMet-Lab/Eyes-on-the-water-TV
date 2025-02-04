@@ -29,6 +29,7 @@ import plotly.graph_objects as go
 import webcolors
 from plotly.subplots import make_subplots
 import dash_bootstrap_components as dbc
+from dash.exceptions import PreventUpdate
 
 
 # Add at the top of your file, after imports
@@ -282,12 +283,41 @@ def process_image(img, active_toggle, models, settings_store, img_path=None):
     
     return img
 
-# Modify the layout section - move analysis plot above image
+# Modify the layout section - move loading screen to be first child of root div
 app.layout = html.Div([
+    # Loading screen - should be first
+    html.Div(
+        id='loading-screen',
+        children=[
+            html.Div(
+                children=[
+                    html.H3("Processing Images...", style={
+                        'marginBottom': '1rem',
+                        'color': '#333',
+                        'fontSize': '1.5rem'
+                    }),
+                    html.Div(className="spinner"),
+                    html.Div(
+                        "This may take a few moments...",
+                        style={
+                            'marginTop': '1rem',
+                            'color': '#666'
+                        }
+                    )
+                ],
+                className="loading-content"
+            )
+        ],
+        style={
+            'display': 'none',
+            'opacity': '0',
+            'visibility': 'hidden'
+        }
+    ),
+    
     # Title
     html.Div(
         children=[
-            # Add a logo image at the top right and title at top left in a row
             html.Div([
                 html.H1("Eyes on the water TV", style={'margin': '0'}),
                 html.Img(src='assets/Cover_Logos.png', style={'height': '50px'}),
@@ -299,7 +329,6 @@ app.layout = html.Div([
                 'padding': '5px',
                 'backgroundColor': '#f8f9fa',
             }),
-
         ], className='header-title'
     ),
 
@@ -555,7 +584,6 @@ def update_l2_folder_options(selected_l1_folder, selected_l2_folder):
     
     parent_folder = os.path.join(image_parent_folder, selected_l1_folder)
     folders = get_subfolders(parent_folder)
-
     
     return [{'label': folder, 'value': folder} for folder in folders], folders[0]
 
@@ -565,18 +593,25 @@ def update_l2_folder_options(selected_l1_folder, selected_l2_folder):
 @app.callback(
     Output('current-images', 'data'),
     Output('current-index', 'data', allow_duplicate=True),
+    Output('loading-screen', 'style', allow_duplicate=True),
     Input('folder-dropdown-l2', 'value'),
     State('folder-dropdown-l1', 'value'),
     prevent_initial_call=True
 )
 def update_image_list(selected_l2_folder, selected_l1_folder):
     if not selected_l2_folder or not selected_l1_folder:
-        return [], 0
+        return [], 0, {'display': 'none'}
     
     folder_path = os.path.join(image_parent_folder, 
                               selected_l1_folder, selected_l2_folder)
     images = get_images(folder_path)
-    return images, 0
+    
+    # Show loading screen
+    return images, 0, {
+        'display': 'flex',
+        'opacity': '1',
+        'visibility': 'visible'
+    }
 
 # endregion
 
@@ -586,6 +621,7 @@ def update_image_list(selected_l2_folder, selected_l1_folder):
     Output('analysis-plot', 'figure'),
     Output('image-info', 'children'),
     Output('current-index', 'data', allow_duplicate=True),
+    Output('loading-screen', 'style', allow_duplicate=True),
     Input('current-images', 'data'),
     Input('current-index', 'data'),
     Input('prev-button', 'n_clicks'),
@@ -601,6 +637,9 @@ def update_image_list(selected_l2_folder, selected_l1_folder):
 def update_image(images, current_index, prev_clicks, next_clicks, 
                 toggle_state, settings_store, results_cache,
                 click_data, selected_l1_folder, selected_l2_folder):
+    ctx = dash.callback_context
+    trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    
     if not images or not selected_l1_folder or not selected_l2_folder:
         empty_fig = go.Figure()
         empty_fig.update_layout(
@@ -626,23 +665,20 @@ def update_image(images, current_index, prev_clicks, next_clicks,
             html.P("Please select the folders"),
         ])
         
-        return '', empty_fig, info, 0
+        return '', empty_fig, info, 0, {'display': 'none'}
 
     # Extract active_toggle from toggle_state
     active_toggle = toggle_state['active'] if toggle_state else None
 
     # Handle navigation and click events
-    ctx = dash.callback_context
-    if ctx.triggered:
-        trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
-        if trigger_id == 'prev-button' and current_index > 0:
-            current_index -= 1
-        elif trigger_id == 'next-button' and current_index < len(images) - 1:
-            current_index += 1
-        elif trigger_id == 'analysis-plot' and click_data:
-            clicked_index = click_data['points'][0]['pointNumber']
-            if 0 <= clicked_index < len(images):
-                current_index = clicked_index
+    if trigger_id == 'prev-button' and current_index > 0:
+        current_index -= 1
+    elif trigger_id == 'next-button' and current_index < len(images) - 1:
+        current_index += 1
+    elif trigger_id == 'analysis-plot' and click_data:
+        clicked_index = click_data['points'][0]['pointNumber']
+        if 0 <= clicked_index < len(images):
+            current_index = clicked_index
 
     # Create analysis figure using the helper function
     baseline = get_baseline(selected_l1_folder)
@@ -676,7 +712,11 @@ def update_image(images, current_index, prev_clicks, next_clicks,
         html.P(f"Active Toggle: {active_toggle if active_toggle else 'None'}"),
     ])
 
-    return img_src, analysis_fig, info, current_index
+    return img_src, analysis_fig, info, current_index, {
+        'display': 'none',
+        'opacity': '0',
+        'visibility': 'hidden'
+    }
 
 # endregion
 
@@ -684,6 +724,7 @@ def update_image(images, current_index, prev_clicks, next_clicks,
 @app.callback(
     Output({'type': 'toggle-button', 'index': ALL}, 'className'),
     Output('toggle-state', 'data'),
+    Output('loading-screen', 'style', allow_duplicate=True),
     [Input({'type': 'toggle-button', 'index': ALL}, 'n_clicks')],
     State('toggle-state', 'data'),
     prevent_initial_call=True
@@ -695,17 +736,17 @@ def update_toggles(n_clicks_list, current_state):
     active_class = 'nav-button toggle-button active'
 
     if not ctx.triggered:
-        return [base_class for _ in range(3)], {'active': None}
+        return [base_class for _ in range(3)], {'active': None}, {'display': 'none'}
     
     if not ctx.triggered_id:
-        return [base_class for _ in range(3)], {'active': None}
+        return [base_class for _ in range(3)], {'active': None}, {'display': 'none'}
 
     clicked_id = ctx.triggered_id['index']
     button_names = ['Object detection', 'Segmentation', 'Water Clarity Index']
     button_id = button_names[clicked_id]
     
     if current_state['active'] == button_id:
-        return [base_class for _ in range(3)], {'active': None}
+        return [base_class for _ in range(3)], {'active': None}, {'display': 'none'}
 
     classes = []
     for i in range(3):
@@ -714,7 +755,12 @@ def update_toggles(n_clicks_list, current_state):
         else:
             classes.append(base_class)
     
-    return classes, {'active': button_id}
+    # Show loading screen when toggling a model
+    return classes, {'active': button_id}, {
+        'display': 'flex',
+        'opacity': '1',
+        'visibility': 'visible'
+    }
 
 # endregion
 
@@ -886,23 +932,28 @@ def update_wci_settings(wci_options, toggle_state, current_settings):
 # region Add new callback to process and cache results
 @app.callback(
     Output('processed-results-cache', 'data'),
-    Input('folder-dropdown-l2', 'value'),
+    Output('loading-screen', 'style', allow_duplicate=True),
+    Input('current-images', 'data'),  # Changed from folder-dropdown-l2
     Input('settings-store', 'data'),
     State('folder-dropdown-l1', 'value'),
-    prevent_initial_call=True,
-    memoize=True
+    State('folder-dropdown-l2', 'value'),  # Changed to State
+    prevent_initial_call=True
 )
-def cache_processed_results(selected_l2_folder, settings_store, selected_l1_folder):
-    if not selected_l2_folder or not selected_l1_folder:
+def cache_processed_results(images, settings_store, selected_l1_folder, selected_l2_folder):
+    if not images or not selected_l2_folder or not selected_l1_folder:
         return {
             'folder_path': None,
             'settings': None,
             'results': {}
+        }, {
+            'display': 'none',
+            'opacity': '0',
+            'visibility': 'hidden'
         }
     
     folder_path = os.path.join(image_parent_folder, selected_l1_folder, selected_l2_folder)
     
-    # Include point coordinates in cache path for segmentation
+    # Process images and cache results
     point_x = settings_store['Segmentation']['point_x']
     point_y = settings_store['Segmentation']['point_y']
     seg_cache_folder = os.path.join(
@@ -919,8 +970,6 @@ def cache_processed_results(selected_l2_folder, settings_store, selected_l1_fold
         'results': {}
     }
     
-    images = get_images(folder_path)
-
     # Process all images with all models
     for img_name in tqdm(images):
         img_path = os.path.join(folder_path, img_name)
@@ -975,7 +1024,13 @@ def cache_processed_results(selected_l2_folder, settings_store, selected_l1_fold
             'color': closest_name
         }
 
-    return current_state
+    # Return results and hide loading screen
+    return current_state, {
+        'display': 'none',
+        'opacity': '0',
+        'visibility': 'hidden'
+    }
+
 # endregion
 
 # Add a callback to clear the cache when needed
@@ -1293,6 +1348,23 @@ def create_analysis_plot(results_cache, images, current_index, toggle_state, bas
         analysis_fig.update_yaxes(title_text="Segmented Area (pixels)", secondary_y=True)
     
     return analysis_fig
+
+# Add a clientside callback to prevent scrolling when loading
+app.clientside_callback(
+    """
+    function(style) {
+        if (style && style.display === 'flex') {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = 'auto';
+        }
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output('dummy-output', 'data', allow_duplicate=True),
+    Input('loading-screen', 'style'),
+    prevent_initial_call=True
+)
 
 if __name__ == '__main__':
     # app.run_server(host="0.0.0.0", port="8051", debug=True)

@@ -1,0 +1,51 @@
+#loading-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(255, 255, 255, 0.9);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 99999;
+    backdrop-filter: blur(5px);
+    transition: all 0.3s ease;
+    pointer-events: all;
+}
+
+.loading-content {
+    text-align: center;
+    background: white;
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    min-width: 300px;
+    position: relative;
+    z-index: 100000;
+}
+
+.loading-content h3 {
+    margin-bottom: 1rem;
+    color: #333;
+}
+
+.spinner {
+    width: 60px;
+    height: 60px;
+    margin: 20px auto;
+    border: 5px solid #f3f3f3;
+    border-top: 5px solid #3498db;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Ensure the loading screen is always on top */
+body.loading {
+    overflow: hidden;
+} 
