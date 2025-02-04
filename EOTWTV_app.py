@@ -64,7 +64,7 @@ app.index_string = '''
 </html>
 '''
 
-image_parent_folder = '/home/NAS/homes/isaac-10009/Data/EOTW-TV/App_demo_data/'
+image_parent_folder = 'sample_data'
 
 # Add default settings
 DEFAULT_SETTINGS = {
@@ -512,6 +512,14 @@ models = model_init()
     prevent_initial_call="initial_duplicate"
 )
 def update_folders_from_parent(parent_path):
+
+    base_style = {
+        'margin': '0.5rem',
+        'padding': '0.5rem 1rem',
+        'minWidth': '8rem',
+        'flex': '1',
+    }
+
     if not parent_path or not os.path.exists(parent_path):
         return [], None, [base_style for _ in range(3)], {'active': None}
     
@@ -525,13 +533,6 @@ def update_folders_from_parent(parent_path):
     
     # Get folders from new parent path
     folders = get_subfolders(parent_path)
-    
-    base_style = {
-        'margin': '0.5rem',
-        'padding': '0.5rem 1rem',
-        'minWidth': '8rem',
-        'flex': '1',
-    }
 
     return (
         [{'label': folder, 'value': folder} for folder in folders],
