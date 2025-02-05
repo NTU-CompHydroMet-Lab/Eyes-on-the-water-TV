@@ -10,5 +10,6 @@ plotly
 tqdm
 ultralytics
 webcolors
+jupyter
 ipykernel
 ipywidgets

@@ -3,11 +3,10 @@ from PIL import Image, ImageDraw, ImageFont
 import base64
 import diskcache
 import os
-import multiprocessing
-import time
+import sys
+import argparse
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-import cv2
 from baseline_config import load_baselines, set_baseline, get_baseline
 
 os.environ['TORCH_CUDNN_SDPA_ENABLED'] = '1'
@@ -631,11 +630,12 @@ def update_image_list(selected_l2_folder, selected_l1_folder):
     Input('analysis-plot', 'clickData'),
     State('folder-dropdown-l1', 'value'),
     State('folder-dropdown-l2', 'value'),
+    State('parent-folder-input', 'value'),  # Add parent folder state
     prevent_initial_call=True
 )
 def update_image(images, current_index, prev_clicks, next_clicks, 
                 toggle_state, settings_store, results_cache,
-                click_data, selected_l1_folder, selected_l2_folder):
+                click_data, selected_l1_folder, selected_l2_folder, parent_folder):
     ctx = dash.callback_context
     trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
     
@@ -679,14 +679,15 @@ def update_image(images, current_index, prev_clicks, next_clicks,
         if 0 <= clicked_index < len(images):
             current_index = clicked_index
 
-    # Create analysis figure using the helper function
-    baseline = get_baseline(selected_l1_folder)
+    # Create analysis figure using the helper function with parent_folder
+    baseline = get_baseline(parent_folder, selected_l1_folder)
     if baseline is None and images:
         first_image = images[0]
         baseline = results_cache['results'][first_image]['segmentation']['area']
     
     analysis_fig = create_analysis_plot(
-        results_cache, images, current_index, toggle_state, baseline
+        results_cache, images, current_index, toggle_state, baseline,
+        parent_folder, selected_l1_folder  # Add these arguments
     )
 
     # Get current image path and basic info
@@ -1136,14 +1137,15 @@ def update_save_button_state(toggle_state):
             'cursor': 'pointer'
         }
 
-# Add callback to initialize baselines store
+# Modify the initialize_baselines callback
 @app.callback(
     Output('baselines-store', 'data'),
     Input('folder-dropdown-l1', 'value'),
+    Input('parent-folder-input', 'value'),  # Add parent folder input
     prevent_initial_call=True
 )
-def initialize_baselines(level1_folder):
-    if not level1_folder:
+def initialize_baselines(level1_folder, parent_folder):
+    if not level1_folder or not parent_folder:
         return {}
     return load_baselines()
 
@@ -1154,6 +1156,7 @@ def initialize_baselines(level1_folder):
     Output('analysis-plot', 'figure', allow_duplicate=True),
     Input('set-baseline-button', 'n_clicks'),
     Input('toggle-state', 'data'),
+    State('parent-folder-input', 'value'),  # Add parent folder state
     State('folder-dropdown-l1', 'value'),
     State('current-images', 'data'),
     State('current-index', 'data'),
@@ -1161,8 +1164,8 @@ def initialize_baselines(level1_folder):
     State('baselines-store', 'data'),
     prevent_initial_call=True
 )
-def handle_baseline_setting(n_clicks, toggle_state, level1_folder, images, current_index, 
-                          results_cache, current_baselines):
+def handle_baseline_setting(n_clicks, toggle_state, parent_folder, level1_folder, images, 
+                          current_index, results_cache, current_baselines):
     ctx = dash.callback_context
     trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
     
@@ -1171,6 +1174,7 @@ def handle_baseline_setting(n_clicks, toggle_state, level1_folder, images, curre
                       toggle_state['active'] != 'Segmentation' or 
                       not images or 
                       not level1_folder or 
+                      not parent_folder or 
                       not results_cache or 
                       not results_cache['results'])
     
@@ -1181,12 +1185,13 @@ def handle_baseline_setting(n_clicks, toggle_state, level1_folder, images, curre
         current_image = images[current_index]
         if current_image in results_cache['results']:
             current_area = results_cache['results'][current_image]['segmentation']['area']
-            set_baseline(level1_folder, current_area)
+            set_baseline(parent_folder, level1_folder, current_area)  # Updated to include parent_folder
             current_baselines = load_baselines()
             
             # Create updated plot
             analysis_fig = create_analysis_plot(
-                results_cache, images, current_index, toggle_state, current_area
+                results_cache, images, current_index, toggle_state, current_area,
+                parent_folder, level1_folder  # Add these arguments
             )
     
     return current_baselines, button_disabled, analysis_fig
@@ -1222,8 +1227,9 @@ def update_baseline_button_style(toggle_state):
             'cursor': 'not-allowed',
         }
 
-# Add a new helper function to create the analysis plot
-def create_analysis_plot(results_cache, images, current_index, toggle_state, baseline=None):
+# Modify the create_analysis_plot function to handle the new baseline lookup
+def create_analysis_plot(results_cache, images, current_index, toggle_state, baseline=None,
+                        parent_folder=None, level1_folder=None):
     analysis_fig = make_subplots(specs=[[{"secondary_y": True}]])
     
     if results_cache and results_cache['results']:
@@ -1267,6 +1273,14 @@ def create_analysis_plot(results_cache, images, current_index, toggle_state, bas
             ),
             secondary_y=False
         )
+        
+        # If baseline wasn't provided, try to get it from the store
+        if baseline is None and results_cache and results_cache['results']:
+            if parent_folder and level1_folder:
+                baseline = get_baseline(parent_folder, level1_folder)
+            if baseline is None and results_cache['results']:
+                first_image = next(iter(results_cache['results']))
+                baseline = results_cache['results'][first_image]['segmentation']['area']
         
         # Add baseline if provided
         if baseline is not None:
@@ -1366,7 +1380,10 @@ app.clientside_callback(
 )
 
 if __name__ == '__main__':
-    # app.run_server(host="0.0.0.0", port="8051", debug=True)
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--port", required=False, type=int, default=8051)
+    args = parser.parse_args()
     
-    # Change the port if port 8051 is occupied
-    app.run_server(port="8051", debug=True)
+    # app.run_server(host="0.0.0.0", port=args.port, debug=True)
+    app.run_server(port=args.port, debug=True)

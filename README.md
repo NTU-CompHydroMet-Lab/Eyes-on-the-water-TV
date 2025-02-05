@@ -30,6 +30,17 @@ To run the app, execute:
 python EOTWTV_app.py
 ```
 
+If there is an error about the port, you can change the port by:
+```bash
+# By default, the port is 8051
+python EOTWTV_app.py --port XXXX # You can choose any port that is available, e.g. 8052
+```
+
+After the launch, you can see the app by opening the following link in your browser:
+```
+http://127.0.0.1:8051 # http://127.0.0.1:XXXX
+```
+
 Reminder: The "cache" folder is used to reduce computation. Feel free to delete it if the cache is not useful anymore.
 
 ![image](assets/demo.gif)
