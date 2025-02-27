@@ -1,0 +1,58 @@
+{
+  "analysis_modes": {
+    "object_detection": {
+      "title": "Object Detection",
+      "description": "Object detection identifies and locates objects in the image such as boats, buoys, and debris. The model draws bounding boxes around detected objects and labels them with confidence scores."
+    },
+    "segmentation": {
+      "title": "Segmentation",
+      "description": "Segmentation analyzes water surface area by highlighting regions based on the selected point. Used to track changes in water coverage over time. The orange overlay shows the detected water region."
+    },
+    "water_clarity_index": {
+      "title": "Water Clarity Index",
+      "description": "Water Clarity Index measures the transparency and quality of water based on visual characteristics. Higher scores indicate clearer water. The analysis considers color, turbidity, and visibility factors."
+    }
+  },
+  "buttons": {
+    "set_baseline": {
+      "title": "Set Baseline",
+      "description": "Sets the current image's segmentation area as the baseline for comparison. This helps track changes in water coverage across the image sequence."
+    },
+    "save_results": {
+      "title": "Save Results",
+      "description": "Exports the analysis results for the current folder as a CSV file. The exported data depends on the active analysis mode."
+    }
+  },
+  "settings": {
+    "segmentation": {
+      "point_x": {
+        "title": "Point X Position",
+        "description": "Sets the horizontal position (left to right) of the point used to tell the AI model where the water body is located. The model will segment the water region around this point."
+      },
+      "point_y": {
+        "title": "Point Y Position",
+        "description": "Sets the vertical position (top to bottom) of the point used to tell the AI model where the water body is located. The model will segment the water region around this point."
+      },
+      "show_overlay": {
+        "title": "Show Overlay",
+        "description": "Toggles the visibility of the orange overlay that highlights the detected water region."
+      }
+    },
+    "object_detection": {
+      "confidence": {
+        "title": "Confidence Threshold",
+        "description": "Sets the minimum confidence level required for object detections. Higher values result in fewer but more reliable detections."
+      },
+      "show_overlay": {
+        "title": "Show Overlay",
+        "description": "Toggles the visibility of bounding boxes and labels around detected objects."
+      }
+    },
+    "water_clarity_index": {
+      "show_score": {
+        "title": "Show Score",
+        "description": "Toggles the visibility of the water clarity score and color information on the image."
+      }
+    }
+  }
+} 

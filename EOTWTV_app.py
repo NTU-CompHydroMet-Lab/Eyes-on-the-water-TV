@@ -53,6 +53,7 @@ app.index_string = '''
         <title>{%title%}</title>
         {%favicon%}
         {%css%}
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
     </head>
     <body>
         {%app_entry%}
@@ -78,10 +79,14 @@ DEFAULT_SETTINGS = {
         'point_x': 0.5,  # Default center position (50%)
         'point_y': 0.6   # Default position at 60% height
     },
-    'Water Clarity Index': {
+    'Water clarity Index': {
         'show_score': True,
     }
 }
+
+# Load tooltips from JSON file
+with open('assets/tooltips.json', 'r') as f:
+    TOOLTIPS = json.load(f)
 
 # Initialize the AI models
 def model_init():
@@ -268,13 +273,13 @@ def process_image(img, active_toggle, models, settings_store, img_path=None):
                          point_x_px + marker_size, point_y_px + marker_size), 
                         outline='white', width=4)
         
-    elif active_toggle == 'Water Clarity Index':
+    elif active_toggle == 'Water clarity Index':
         results = models['water_clearity_index'].predict(img, verbose=False)
         probs = results[0].probs.data.cpu().numpy()
         overall_score = 1 * probs[0] + 0.5 * probs[1] + 0.0 * probs[2]
         overall_color = np.mean(results[0].orig_img, axis=(0, 1)).astype(np.uint8)
         actual_name, closest_name = get_colour_name(overall_color)
-        draw.text((10, 10), f"Water Clarity Score: {overall_score:.2f}, color: {closest_name}", 
+        draw.text((10, 10), f"Water clarity score: {overall_score:.2f}, color: {closest_name}", 
                  fill="white", font=fnt, stroke_width=20, stroke_fill="black")
     
     # Store processed image in cache
@@ -401,19 +406,55 @@ app.layout = html.Div([
                         id='next-button',
                         className='nav-button',
                         n_clicks=0),
+                    
+                    html.H4('Analysis modes'),
+                    html.Div([
+                        html.I(className="fas fa-info-circle", id="od-info-icon", 
+                               style={"marginLeft": "8px", "color": "#17a2b8", "cursor": "pointer"}),
+                        html.Button('Object Detection', 
+                            id={'type': 'toggle-button', 'index': 0},
+                            className='nav-button toggle-button',
+                            n_clicks=0),
                         
-                    html.Button('Object detection', 
-                        id={'type': 'toggle-button', 'index': 0},
-                        className='nav-button toggle-button',
-                        n_clicks=0),
-                    html.Button('Segmentation', 
-                        id={'type': 'toggle-button', 'index': 1},
-                        className='nav-button toggle-button',
-                        n_clicks=0),
-                    html.Button('Water Clarity Index', 
-                        id={'type': 'toggle-button', 'index': 2},
-                        className='nav-button toggle-button',
-                        n_clicks=0),
+                    ], style={"display": "flex", "alignItems": "center"}),
+                    
+                    dbc.Tooltip(
+                        TOOLTIPS["analysis_modes"]["object_detection"]["description"],
+                        target="od-info-icon",
+                        placement="right"
+                    ),
+                    
+                    html.Div([
+                        html.I(className="fas fa-info-circle", id="seg-info-icon", 
+                               style={"marginLeft": "8px", "color": "#17a2b8", "cursor": "pointer"}),
+                        html.Button('Segmentation', 
+                            id={'type': 'toggle-button', 'index': 1},
+                            className='nav-button toggle-button',
+                            n_clicks=0),
+                        
+                    ], style={"display": "flex", "alignItems": "center"}),
+                    
+                    dbc.Tooltip(
+                        TOOLTIPS["analysis_modes"]["segmentation"]["description"],
+                        target="seg-info-icon",
+                        placement="right"
+                    ),
+                    
+                    html.Div([
+                        html.I(className="fas fa-info-circle", id="wci-info-icon", 
+                               style={"marginLeft": "8px", "color": "#17a2b8", "cursor": "pointer"}),
+                        html.Button('Water Clarity Index', 
+                            id={'type': 'toggle-button', 'index': 2},
+                            className='nav-button toggle-button',
+                            n_clicks=0),
+                        
+                    ], style={"display": "flex", "alignItems": "center"}),
+                    
+                    dbc.Tooltip(
+                        TOOLTIPS["analysis_modes"]["water_clarity_index"]["description"],
+                        target="wci-info-icon",
+                        placement="right"
+                    ),
                 ], style={'marginBottom': '20px'}),
                 
                 # Settings section
@@ -537,29 +578,26 @@ models = model_init()
 # endregion
 
 # region Callback to update image list when folder is selected
-# Remove this callback as it references components that no longer exist
-# @app.callback(
-#     Output('current-images', 'data'),
-#     Output('current-index', 'data', allow_duplicate=True),
-#     Output('loading-screen', 'style', allow_duplicate=True),
-#     Input('folder-dropdown-l2', 'value'),
-#     State('folder-dropdown-l1', 'value'),
-#     prevent_initial_call=True
-# )
-# def update_image_list(selected_l2_folder, selected_l1_folder):
-#     if not selected_l2_folder or not selected_l1_folder:
-#         return [], 0, {'display': 'none'}
-#     
-#     folder_path = os.path.join(image_parent_folder, 
-#                               selected_l1_folder, selected_l2_folder)
-#     images = get_images(folder_path)
-#     
-#     # Show loading screen
-#     return images, 0, {
-#         'display': 'flex',
-#         'opacity': '1',
-#         'visibility': 'visible'
-#     }
+@app.callback(
+    Output('current-images', 'data'),
+    Output('current-index', 'data', allow_duplicate=True),
+    Output('loading-screen', 'style', allow_duplicate=True),
+    Input('folder-select-button', 'n_clicks'),
+    State('selected-folder-path', 'data'),
+    prevent_initial_call=True
+)
+def update_selected_folder(n_clicks, selected_folder_path):
+    if not selected_folder_path:
+        return [], 0, {'display': 'none'}
+    
+    images = get_images(selected_folder_path)
+    
+    # Show loading screen
+    return images, 0, {
+        'display': 'flex',
+        'opacity': '1',
+        'visibility': 'visible'
+    }
 # endregion
 
 # region Callback to update displayed image and info
@@ -689,7 +727,7 @@ def update_toggles(n_clicks_list, current_state):
         return [base_class for _ in range(3)], {'active': None}, {'display': 'none'}
 
     clicked_id = ctx.triggered_id['index']
-    button_names = ['Object detection', 'Segmentation', 'Water Clarity Index']
+    button_names = ['Object detection', 'Segmentation', 'Water clarity Index']
     button_id = button_names[clicked_id]
     
     if current_state['active'] == button_id:
@@ -728,7 +766,18 @@ def update_settings_container(toggle_state, current_settings):
     if active_toggle == 'Object detection':
         return html.Div([
             html.Div([
-                html.Label(f'Confidence Threshold: {settings["confidence"]:.2f}'),
+                html.Div([
+                    html.I(className="fas fa-info-circle", id="confidence-info-icon", 
+                          style={"marginRight": "8px", "color": "#17a2b8", "cursor": "pointer"}),
+                    html.Label(f'Confidence Threshold: {settings["confidence"]:.2f}'),
+                ], style={"display": "flex", "alignItems": "center", "marginBottom": "5px"}),
+                
+                dbc.Tooltip(
+                    TOOLTIPS["settings"]["object_detection"]["confidence"]["description"],
+                    target="confidence-info-icon",
+                    placement="right"
+                ),
+                
                 dcc.Slider(
                     id='confidence-slider',
                     min=0,
@@ -740,20 +789,41 @@ def update_settings_container(toggle_state, current_settings):
             ], style={'marginBottom': '1rem'}),
             
             html.Div([
-                dcc.Checklist(
-                    id='od-display-options',
-                    options=[
-                        {'label': 'Show Overlay', 'value': 'show_overlay'},
-                    ],
-                    value=['show_overlay'] if settings['show_overlay'] else [],
-                )
+                html.Div([
+                    html.I(className="fas fa-info-circle", id="od-overlay-info-icon", 
+                          style={"marginRight": "8px", "color": "#17a2b8", "cursor": "pointer"}),
+                    dcc.Checklist(
+                        id='od-display-options',
+                        options=[
+                            {'label': 'Show Overlay', 'value': 'show_overlay'},
+                        ],
+                        value=['show_overlay'] if settings['show_overlay'] else [],
+                    ),
+                ], style={"display": "flex", "alignItems": "center"}),
+                
+                dbc.Tooltip(
+                    TOOLTIPS["settings"]["object_detection"]["show_overlay"]["description"],
+                    target="od-overlay-info-icon",
+                    placement="right"
+                ),
             ])
         ]), {'display': 'block'}
 
     elif active_toggle == 'Segmentation':
         return html.Div([
             html.Div([
-                html.Label(f'Point X Position: {settings["point_x"]:.2f}'),
+                html.Div([
+                    html.I(className="fas fa-info-circle", id="point-x-info-icon", 
+                          style={"marginRight": "8px", "color": "#17a2b8", "cursor": "pointer"}),
+                    html.Label(f'Point X Position: {settings["point_x"]:.2f}'),
+                ], style={"display": "flex", "alignItems": "center", "marginBottom": "5px"}),
+                
+                dbc.Tooltip(
+                    TOOLTIPS["settings"]["segmentation"]["point_x"]["description"],
+                    target="point-x-info-icon",
+                    placement="right"
+                ),
+                
                 dcc.Slider(
                     id='point-x-slider',
                     min=0,
@@ -765,7 +835,18 @@ def update_settings_container(toggle_state, current_settings):
             ], style={'marginBottom': '1rem'}),
             
             html.Div([
-                html.Label(f'Point Y Position: {settings["point_y"]:.2f}'),
+                html.Div([
+                    html.I(className="fas fa-info-circle", id="point-y-info-icon", 
+                          style={"marginRight": "8px", "color": "#17a2b8", "cursor": "pointer"}),
+                    html.Label(f'Point Y Position: {settings["point_y"]:.2f}'),
+                ], style={"display": "flex", "alignItems": "center", "marginBottom": "5px"}),
+                
+                dbc.Tooltip(
+                    TOOLTIPS["settings"]["segmentation"]["point_y"]["description"],
+                    target="point-y-info-icon",
+                    placement="right"
+                ),
+                
                 dcc.Slider(
                     id='point-y-slider',
                     min=0,
@@ -777,30 +858,54 @@ def update_settings_container(toggle_state, current_settings):
             ], style={'marginBottom': '1rem'}),
             
             html.Div([
-                dcc.Checklist(
-                    id='seg-display-options',
-                    options=[
-                        {'label': 'Show Overlay', 'value': 'show_overlay'},
-                    ],
-                    value=['show_overlay'] if settings['show_overlay'] else [],
-                )
+                html.Div([
+                    html.I(className="fas fa-info-circle", id="seg-overlay-info-icon", 
+                          style={"marginRight": "8px", "color": "#17a2b8", "cursor": "pointer"}),
+                    dcc.Checklist(
+                        id='seg-display-options',
+                        options=[
+                            {'label': 'Show Overlay', 'value': 'show_overlay'},
+                        ],
+                        value=['show_overlay'] if settings['show_overlay'] else [],
+                    ),
+                ], style={"display": "flex", "alignItems": "center"}),
+                
+                dbc.Tooltip(
+                    TOOLTIPS["settings"]["segmentation"]["show_overlay"]["description"],
+                    target="seg-overlay-info-icon",
+                    placement="right"
+                ),
             ])
         ]), {'display': 'block'}
 
-    elif active_toggle == 'Water Clarity Index':
+    elif active_toggle == 'Water clarity Index':
         return html.Div([
             html.Div([
-                html.Label('Quality Thresholds'),
+                html.Div([
+                    html.I(className="fas fa-info-circle", id="wci-threshold-info-icon", 
+                          style={"marginRight": "8px", "color": "#17a2b8", "cursor": "pointer"}),
+                    html.Label('Quality Thresholds'),
+                ], style={"display": "flex", "alignItems": "center"}),
             ], style={'marginBottom': '1rem'}),
             
             html.Div([
-                dcc.Checklist(
-                    id='wci-display-options',
-                    options=[
-                        {'label': 'Show Score', 'value': 'show_score'},
-                    ],
-                    value=['show_score'] if settings['show_score'] else [],
-                )
+                html.Div([
+                    html.I(className="fas fa-info-circle", id="wci-score-info-icon", 
+                          style={"marginRight": "8px", "color": "#17a2b8", "cursor": "pointer"}),
+                    dcc.Checklist(
+                        id='wci-display-options',
+                        options=[
+                            {'label': 'Show Score', 'value': 'show_score'},
+                        ],
+                        value=['show_score'] if settings['show_score'] else [],
+                    ),
+                ], style={"display": "flex", "alignItems": "center"}),
+                
+                dbc.Tooltip(
+                    TOOLTIPS["settings"]["water_clarity_index"]["show_score"]["description"],
+                    target="wci-score-info-icon",
+                    placement="right"
+                ),
             ])
         ]), {'display': 'block'}
     
@@ -866,10 +971,10 @@ def update_segmentation_settings(point_x, point_y, seg_options, toggle_state, cu
     prevent_initial_call=True
 )
 def update_wci_settings(wci_options, toggle_state, current_settings):
-    if not toggle_state['active'] or toggle_state['active'] != 'Index':
+    if not toggle_state['active'] or toggle_state['active'] != 'Water clarity Index':
         return dash.no_update
 
-    current_settings['Water Clarity Index'].update({
+    current_settings['Water clarity Index'].update({
         'show_score': 'show_score' in (wci_options or [])
     })
 
@@ -1035,7 +1140,7 @@ def download_results(n_clicks, results_cache, selected_folder_path, toggle_state
             for img_name, data in results_cache['results'].items()
         ])
     
-    elif active_toggle == 'Water Clarity Index':
+    elif active_toggle == 'Water clarity Index':
         df = pd.DataFrame([
             {
                 'Image': img_name,
@@ -1301,8 +1406,8 @@ def create_analysis_plot(results_cache, images, current_index, toggle_state, bas
         )
         
         # Update y-axes titles
-        analysis_fig.update_yaxes(title_text="Detections / Water Clarity Score", secondary_y=False)
-        analysis_fig.update_yaxes(title_text="Segmented Area (pixels)", secondary_y=True)
+        analysis_fig.update_yaxes(title_text="Detections / Water clarity score", secondary_y=False)
+        analysis_fig.update_yaxes(title_text="Segmented area (pixels)", secondary_y=True)
     
     return analysis_fig
 
