@@ -880,33 +880,33 @@ def update_settings_container(toggle_state, current_settings):
 
     elif active_toggle == 'Water clarity Index':
         return html.Div([
-            html.Div([
-                html.Div([
-                    html.I(className="fas fa-info-circle", id="wci-threshold-info-icon", 
-                          style={"marginRight": "8px", "color": "#17a2b8", "cursor": "pointer"}),
-                    html.Label('Quality Thresholds'),
-                ], style={"display": "flex", "alignItems": "center"}),
-            ], style={'marginBottom': '1rem'}),
+            # html.Div([
+            #     html.Div([
+            #         html.I(className="fas fa-info-circle", id="wci-threshold-info-icon", 
+            #               style={"marginRight": "8px", "color": "#17a2b8", "cursor": "pointer"}),
+            #         html.Label('Quality Thresholds'),
+            #     ], style={"display": "flex", "alignItems": "center"}),
+            # ], style={'marginBottom': '1rem'}),
             
-            html.Div([
-                html.Div([
-                    html.I(className="fas fa-info-circle", id="wci-score-info-icon", 
-                          style={"marginRight": "8px", "color": "#17a2b8", "cursor": "pointer"}),
-                    dcc.Checklist(
-                        id='wci-display-options',
-                        options=[
-                            {'label': 'Show Score', 'value': 'show_score'},
-                        ],
-                        value=['show_score'] if settings['show_score'] else [],
-                    ),
-                ], style={"display": "flex", "alignItems": "center"}),
+            # html.Div([
+            #     html.Div([
+            #         html.I(className="fas fa-info-circle", id="wci-score-info-icon", 
+            #               style={"marginRight": "8px", "color": "#17a2b8", "cursor": "pointer"}),
+            #         dcc.Checklist(
+            #             id='wci-display-options',
+            #             options=[
+            #                 {'label': 'Show Score', 'value': 'show_score'},
+            #             ],
+            #             value=['show_score'] if settings['show_score'] else [],
+            #         ),
+            #     ], style={"display": "flex", "alignItems": "center"}),
                 
-                dbc.Tooltip(
-                    TOOLTIPS["settings"]["water_clarity_index"]["show_score"]["description"],
-                    target="wci-score-info-icon",
-                    placement="right"
-                ),
-            ])
+            #     dbc.Tooltip(
+            #         TOOLTIPS["settings"]["water_clarity_index"]["show_score"]["description"],
+            #         target="wci-score-info-icon",
+            #         placement="right"
+            #     ),
+            # ])
         ]), {'display': 'block'}
     
     return [], {'display': 'none'}
@@ -1399,7 +1399,7 @@ def create_analysis_plot(results_cache, images, current_index, toggle_state, bas
             legend=dict(
                 orientation="h",  # horizontal orientation
                 yanchor="bottom",
-                y=-0.2,  # position below the plot
+                y=-0.5,  # position below the plot
                 xanchor="center",
                 x=0.5    # centered horizontally
             )
