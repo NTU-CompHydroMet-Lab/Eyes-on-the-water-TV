@@ -536,87 +536,30 @@ app.layout = html.Div([
 models = model_init()
 # endregion
 
-# region Callback to update folder options
-# Remove these callbacks as they reference components that no longer exist
+# region Callback to update image list when folder is selected
+# Remove this callback as it references components that no longer exist
 # @app.callback(
-#     Output('folder-dropdown-l1', 'options', allow_duplicate=True),
-#     Output('folder-dropdown-l1', 'value', allow_duplicate=True),
-#     Output({'type': 'toggle-button', 'index': ALL}, 'style', allow_duplicate=True),
-#     Output('toggle-state', 'data', allow_duplicate=True),
-#     Input('parent-folder-input', 'value'),
-#     prevent_initial_call="initial_duplicate"
-# )
-# def update_folders_from_parent(parent_path):
-#
-#     base_style = {
-#         'margin': '0.5rem',
-#         'padding': '0.5rem 1rem',
-#         'minWidth': '8rem',
-#         'flex': '1',
-#     }
-#
-#     if not parent_path or not os.path.exists(parent_path):
-#         return [], None, [base_style for _ in range(3)], {'active': None}
-#     
-#
-#     if parent_path[-1] != '/':
-#         parent_path = parent_path + '/'
-#
-#     # Update global variable
-#     global image_parent_folder
-#     image_parent_folder = parent_path
-#     
-#     # Get folders from new parent path
-#     folders = get_subfolders(parent_path)
-#
-#     return (
-#         [{'label': folder, 'value': folder} for folder in folders],
-#         None,
-#         [base_style for _ in range(3)],
-#         {'active': None}
-#     )
-#
-# @app.callback(
-#     Output('folder-dropdown-l2', 'options'),
-#     Output('folder-dropdown-l2', 'value'),
-#     Input('folder-dropdown-l1', 'value'),
-#     State('folder-dropdown-l2', 'value'),
+#     Output('current-images', 'data'),
+#     Output('current-index', 'data', allow_duplicate=True),
+#     Output('loading-screen', 'style', allow_duplicate=True),
+#     Input('folder-dropdown-l2', 'value'),
+#     State('folder-dropdown-l1', 'value'),
 #     prevent_initial_call=True
 # )
-# def update_l2_folder_options(selected_l1_folder, selected_l2_folder):
-#     if not selected_l1_folder:
-#         return [], None
+# def update_image_list(selected_l2_folder, selected_l1_folder):
+#     if not selected_l2_folder or not selected_l1_folder:
+#         return [], 0, {'display': 'none'}
 #     
-#     parent_folder = os.path.join(image_parent_folder, selected_l1_folder)
-#     folders = get_subfolders(parent_folder)
+#     folder_path = os.path.join(image_parent_folder, 
+#                               selected_l1_folder, selected_l2_folder)
+#     images = get_images(folder_path)
 #     
-#     return [{'label': folder, 'value': folder} for folder in folders], folders[0]
-# endregion
-
-# region Callback to update image list when folder is selected
-@app.callback(
-    Output('current-images', 'data'),
-    Output('current-index', 'data', allow_duplicate=True),
-    Output('loading-screen', 'style', allow_duplicate=True),
-    Input('folder-dropdown-l2', 'value'),
-    State('folder-dropdown-l1', 'value'),
-    prevent_initial_call=True
-)
-def update_image_list(selected_l2_folder, selected_l1_folder):
-    if not selected_l2_folder or not selected_l1_folder:
-        return [], 0, {'display': 'none'}
-    
-    folder_path = os.path.join(image_parent_folder, 
-                              selected_l1_folder, selected_l2_folder)
-    images = get_images(folder_path)
-    
-    # Show loading screen
-    return images, 0, {
-        'display': 'flex',
-        'opacity': '1',
-        'visibility': 'visible'
-    }
-
+#     # Show loading screen
+#     return images, 0, {
+#         'display': 'flex',
+#         'opacity': '1',
+#         'visibility': 'visible'
+#     }
 # endregion
 
 # region Callback to update displayed image and info
@@ -1036,15 +979,14 @@ def cache_processed_results(images, settings_store, selected_folder_path):
 
 # endregion
 
-# Add a callback to clear the cache when needed
+# Add a clear cache callback
 @app.callback(
     Output('dummy-output', 'data'),  # Add this store to your layout
-    Input('folder-dropdown-l1', 'value'),
-    Input('folder-dropdown-l2', 'value'),
+    Input('folder-select-button', 'n_clicks'),
     Input('settings-store', 'data'),
     prevent_initial_call=True
 )
-def clear_image_cache(folder_l1, folder_l2, settings):
+def clear_image_cache(folder_button, settings):
     app.image_cache = {}
     return None
 
