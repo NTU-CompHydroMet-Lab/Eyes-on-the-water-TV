@@ -317,7 +317,7 @@ app.layout = html.Div([
     html.Div(
         children=[
             html.Div([
-                html.H1("Eyes on the water TV", style={'margin': '0'}),
+                html.H1("Eyes on the Water TV", style={'margin': '0'}),
                 html.Img(src='assets/Cover_Logos.png', style={'height': '50px'}),
             ], className='title-section', style={
                 'display': 'flex',
@@ -411,11 +411,11 @@ app.layout = html.Div([
                 html.Div([
                     html.H4('Navigation'),
                     # Navigation buttons in a vertical stack
-                    html.Button('Previous', 
+                    html.Button('Previou image', 
                         id='prev-button',
                         className='nav-button',
                         n_clicks=0),
-                    html.Button('Next', 
+                    html.Button('Next image', 
                         id='next-button',
                         className='nav-button',
                         n_clicks=0),
@@ -444,7 +444,7 @@ app.layout = html.Div([
                 html.Div([
                     html.Div([
                         html.Button(
-                            'Set Current as Baseline', 
+                            'Set current image as baseline', 
                             id='set-baseline-button',
                             disabled=True,
                             style={
@@ -472,7 +472,7 @@ app.layout = html.Div([
                         ),
                     ], style={'width': '100%'}),
                     html.Button(
-                        'Save Results', 
+                        'Save results', 
                         id='save-results-button',
                         disabled=True,
                         style={
@@ -1241,7 +1241,7 @@ def create_analysis_plot(results_cache, images, current_index, toggle_state, bas
             go.Scatter(
                 x=x_values,
                 y=y_od,
-                name='Detections',
+                name='Object detected',
                 line=dict(color='blue'),
                 hovertemplate='Image %{x}<br>Detections: %{y}<extra></extra>'
             ),
@@ -1254,7 +1254,7 @@ def create_analysis_plot(results_cache, images, current_index, toggle_state, bas
             go.Scatter(
                 x=x_values,
                 y=y_seg,
-                name='Segmented Area',
+                name='Segmented area',
                 line=dict(color='red'),
                 hovertemplate='Image %{x}<br>Area: %{y:,.0f} pixels<extra></extra>'
             ),
@@ -1267,7 +1267,7 @@ def create_analysis_plot(results_cache, images, current_index, toggle_state, bas
             go.Scatter(
                 x=x_values,
                 y=y_wci,
-                name='Water Clarity',
+                name='Water clarity score',
                 line=dict(color='green'),
                 hovertemplate='Image %{x}<br>Score: %{y:.2f}<extra></extra>'
             ),
@@ -1288,7 +1288,7 @@ def create_analysis_plot(results_cache, images, current_index, toggle_state, bas
                 go.Scatter(
                     x=[0, len(images)-1],
                     y=[baseline, baseline],
-                    name='Baseline',
+                    name='Segmented area baseline',
                     line=dict(
                         color='black',
                         dash='dash',
@@ -1385,5 +1385,5 @@ if __name__ == '__main__':
     parser.add_argument("--port", required=False, type=int, default=8051)
     args = parser.parse_args()
     
-    # app.run_server(host="0.0.0.0", port=args.port, debug=True)
-    app.run_server(port=args.port, debug=True)
+    app.run_server(host="0.0.0.0", port=args.port, debug=True)
+    # app.run_server(port=args.port, debug=True)

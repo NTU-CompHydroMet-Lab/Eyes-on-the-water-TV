@@ -1,4 +1,11 @@
-# Eyes-on-the-water-TV
+# Eyes-on-the-Water-TV
+
+## About
+
+- Purpose of the tool
+- Contact: ...
+- developeed by ...
+- ... 
 
 ## Installation
 1. Clone the repository:
@@ -46,6 +53,9 @@ Reminder: The "cache" folder is used to reduce computation. Feel free to delete 
 ![image](assets/demo.gif)
 
 ## Batch Processing
+
+Analysis the folder without UI... 
+
 For batch processing details, please refer to the "batch_process.ipynb".
 
 # Batch process
