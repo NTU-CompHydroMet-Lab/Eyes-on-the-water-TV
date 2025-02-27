@@ -8,6 +8,7 @@ import argparse
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from baseline_config import load_baselines, set_baseline, get_baseline
+import json
 
 os.environ['TORCH_CUDNN_SDPA_ENABLED'] = '1'
 
@@ -64,7 +65,7 @@ app.index_string = '''
 </html>
 '''
 
-image_parent_folder = 'sample_data'
+image_parent_folder = 'sample_data/Camera1/TIMEL0001'
 
 # Add default settings
 DEFAULT_SETTINGS = {
@@ -363,49 +364,30 @@ app.layout = html.Div([
             
             # Right section - Info, Navigation, and settings
             html.Div([
+                
+                
+                # Folder selection section
+                html.Div([
+                    html.H4('Folder Selection'),
+                    dbc.Button(
+                        "Select Folder", 
+                        id="folder-select-button",
+                        color="primary",
+                        className="mr-1",
+                        style={
+                            'width': '100%',
+                            'marginBottom': '10px',
+                            'padding': '10px',
+                        }
+                    ),
+                    html.Div(id="selected-folder-display", style={'marginTop': '10px'}),
+                ], style={'marginBottom': '20px'}),
+
                 # Image info section
                 html.Div([
                     html.H4('Image Information'),
                     html.Div(id='image-info'),
                 ]),
-                
-                # Folder selection section
-                html.Div([
-                    html.H4('Folder Selection'),
-                    # Parent folder selection
-                    html.Div([
-                        html.Label('Parent Folder:'),
-                        dcc.Input(
-                            id='parent-folder-input',
-                            type='text',
-                            value=image_parent_folder,
-                            placeholder='Enter parent folder path',
-                            style={'width': '100%', 'marginBottom': '10px'}
-                        ),
-                    ]),
-                    
-                    # Level 1 folder dropdown
-                    html.Div([
-                        html.Label('Main Folder:'),
-                        dcc.Dropdown(
-                            id='folder-dropdown-l1',
-                            options=[],
-                            placeholder='Select main folder',
-                            style={'width': '100%', 'marginBottom': '10px'}
-                        ),
-                    ]),
-                    
-                    # Level 2 folder dropdown
-                    html.Div([
-                        html.Label('Sub Folder:'),
-                        dcc.Dropdown(
-                            id='folder-dropdown-l2',
-                            options=[],
-                            placeholder='Select subfolder',
-                            style={'width': '100%', 'marginBottom': '10px'}
-                        ),
-                    ]),
-                ], style={'marginBottom': '20px'}),
                 
                 # Navigation section
                 html.Div([
@@ -524,6 +506,30 @@ app.layout = html.Div([
     dcc.Store(id='dummy-output'),  # For cache clearing callback
     # Add a store for baselines
     dcc.Store(id='baselines-store', data={}),
+    # Add a store for selected folder path
+    dcc.Store(id='selected-folder-path', data=image_parent_folder),
+    # Add a modal for folder selection
+    dbc.Modal(
+        [
+            dbc.ModalHeader("Select Folder"),
+            dbc.ModalBody([
+                html.P("Select a folder to analyze:"),
+                dbc.Input(
+                    id="folder-input",
+                    type="text",
+                    placeholder="Enter folder path",
+                    value=image_parent_folder,
+                ),
+                html.Div(id="folder-structure", style={"marginTop": "15px"}),
+            ]),
+            dbc.ModalFooter([
+                dbc.Button("Cancel", id="close-folder-modal", className="ml-auto"),
+                dbc.Button("Select", id="confirm-folder-selection", color="primary"),
+            ]),
+        ],
+        id="folder-selection-modal",
+        size="lg",
+    ),
 ])
 
 # region Initialize the AI models
@@ -531,60 +537,60 @@ models = model_init()
 # endregion
 
 # region Callback to update folder options
-@app.callback(
-    Output('folder-dropdown-l1', 'options', allow_duplicate=True),
-    Output('folder-dropdown-l1', 'value', allow_duplicate=True),
-    Output({'type': 'toggle-button', 'index': ALL}, 'style', allow_duplicate=True),
-    Output('toggle-state', 'data', allow_duplicate=True),
-    Input('parent-folder-input', 'value'),
-    prevent_initial_call="initial_duplicate"
-)
-def update_folders_from_parent(parent_path):
-
-    base_style = {
-        'margin': '0.5rem',
-        'padding': '0.5rem 1rem',
-        'minWidth': '8rem',
-        'flex': '1',
-    }
-
-    if not parent_path or not os.path.exists(parent_path):
-        return [], None, [base_style for _ in range(3)], {'active': None}
-    
-
-    if parent_path[-1] != '/':
-        parent_path = parent_path + '/'
-
-    # Update global variable
-    global image_parent_folder
-    image_parent_folder = parent_path
-    
-    # Get folders from new parent path
-    folders = get_subfolders(parent_path)
-
-    return (
-        [{'label': folder, 'value': folder} for folder in folders],
-        None,
-        [base_style for _ in range(3)],
-        {'active': None}
-    )
-
-@app.callback(
-    Output('folder-dropdown-l2', 'options'),
-    Output('folder-dropdown-l2', 'value'),
-    Input('folder-dropdown-l1', 'value'),
-    State('folder-dropdown-l2', 'value'),
-    prevent_initial_call=True
-)
-def update_l2_folder_options(selected_l1_folder, selected_l2_folder):
-    if not selected_l1_folder:
-        return [], None
-    
-    parent_folder = os.path.join(image_parent_folder, selected_l1_folder)
-    folders = get_subfolders(parent_folder)
-    
-    return [{'label': folder, 'value': folder} for folder in folders], folders[0]
-
+# Remove these callbacks as they reference components that no longer exist
+# @app.callback(
+#     Output('folder-dropdown-l1', 'options', allow_duplicate=True),
+#     Output('folder-dropdown-l1', 'value', allow_duplicate=True),
+#     Output({'type': 'toggle-button', 'index': ALL}, 'style', allow_duplicate=True),
+#     Output('toggle-state', 'data', allow_duplicate=True),
+#     Input('parent-folder-input', 'value'),
+#     prevent_initial_call="initial_duplicate"
+# )
+# def update_folders_from_parent(parent_path):
+#
+#     base_style = {
+#         'margin': '0.5rem',
+#         'padding': '0.5rem 1rem',
+#         'minWidth': '8rem',
+#         'flex': '1',
+#     }
+#
+#     if not parent_path or not os.path.exists(parent_path):
+#         return [], None, [base_style for _ in range(3)], {'active': None}
+#     
+#
+#     if parent_path[-1] != '/':
+#         parent_path = parent_path + '/'
+#
+#     # Update global variable
+#     global image_parent_folder
+#     image_parent_folder = parent_path
+#     
+#     # Get folders from new parent path
+#     folders = get_subfolders(parent_path)
+#
+#     return (
+#         [{'label': folder, 'value': folder} for folder in folders],
+#         None,
+#         [base_style for _ in range(3)],
+#         {'active': None}
+#     )
+#
+# @app.callback(
+#     Output('folder-dropdown-l2', 'options'),
+#     Output('folder-dropdown-l2', 'value'),
+#     Input('folder-dropdown-l1', 'value'),
+#     State('folder-dropdown-l2', 'value'),
+#     prevent_initial_call=True
+# )
+# def update_l2_folder_options(selected_l1_folder, selected_l2_folder):
+#     if not selected_l1_folder:
+#         return [], None
+#     
+#     parent_folder = os.path.join(image_parent_folder, selected_l1_folder)
+#     folders = get_subfolders(parent_folder)
+#     
+#     return [{'label': folder, 'value': folder} for folder in folders], folders[0]
 # endregion
 
 # region Callback to update image list when folder is selected
@@ -628,18 +634,16 @@ def update_image_list(selected_l2_folder, selected_l1_folder):
     Input('settings-store', 'data'),
     Input('processed-results-cache', 'data'),
     Input('analysis-plot', 'clickData'),
-    State('folder-dropdown-l1', 'value'),
-    State('folder-dropdown-l2', 'value'),
-    State('parent-folder-input', 'value'),  # Add parent folder state
+    State('selected-folder-path', 'data'),
     prevent_initial_call=True
 )
 def update_image(images, current_index, prev_clicks, next_clicks, 
                 toggle_state, settings_store, results_cache,
-                click_data, selected_l1_folder, selected_l2_folder, parent_folder):
+                click_data, selected_folder_path):
     ctx = dash.callback_context
     trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
     
-    if not images or not selected_l1_folder or not selected_l2_folder:
+    if not images or not selected_folder_path:
         empty_fig = go.Figure()
         empty_fig.update_layout(
             xaxis={'showgrid': False, 'zeroline': False, 'visible': False},
@@ -648,7 +652,7 @@ def update_image(images, current_index, prev_clicks, next_clicks,
             paper_bgcolor='white',
             margin=dict(l=0, r=0, t=0, b=0),
             annotations=[{
-                'text': 'Please select the folders',
+                'text': 'Please select a folder',
                 'xref': 'paper',
                 'yref': 'paper',
                 'x': 0.5,
@@ -661,7 +665,7 @@ def update_image(images, current_index, prev_clicks, next_clicks,
             html.P("Filename: None"),
             html.P("Size: N/A"),
             html.P("Format: N/A"),
-            html.P("Please select the folders"),
+            html.P("Please select a folder"),
         ])
         
         return '', empty_fig, info, 0, {'display': 'none'}
@@ -679,19 +683,20 @@ def update_image(images, current_index, prev_clicks, next_clicks,
         if 0 <= clicked_index < len(images):
             current_index = clicked_index
 
-    # Create analysis figure using the helper function with parent_folder
-    baseline = get_baseline(parent_folder, selected_l1_folder)
-    if baseline is None and images:
+    # Create analysis figure using the helper function with selected folder path
+    baseline = get_baseline_folder(selected_folder_path)
+    if baseline is None and images and results_cache and results_cache['results']:
         first_image = images[0]
-        baseline = results_cache['results'][first_image]['segmentation']['area']
+        if first_image in results_cache['results'] and 'segmentation' in results_cache['results'][first_image]:
+            baseline = results_cache['results'][first_image]['segmentation']['area']
     
     analysis_fig = create_analysis_plot(
         results_cache, images, current_index, toggle_state, baseline,
-        parent_folder, selected_l1_folder  # Add these arguments
+        selected_folder_path
     )
 
     # Get current image path and basic info
-    image_path = os.path.join(image_parent_folder, selected_l1_folder, selected_l2_folder, images[current_index])
+    image_path = os.path.join(selected_folder_path, images[current_index])
     img = Image.open(image_path)
     
     # Process image (no caching for displayed images)
@@ -737,7 +742,6 @@ def update_toggles(n_clicks_list, current_state):
 
     if not ctx.triggered:
         return [base_class for _ in range(3)], {'active': None}, {'display': 'none'}
-
     if not ctx.triggered_id:
         return [base_class for _ in range(3)], {'active': None}, {'display': 'none'}
 
@@ -933,14 +937,13 @@ def update_wci_settings(wci_options, toggle_state, current_settings):
 @app.callback(
     Output('processed-results-cache', 'data'),
     Output('loading-screen', 'style', allow_duplicate=True),
-    Input('current-images', 'data'),  # Changed from folder-dropdown-l2
+    Input('current-images', 'data'),
     Input('settings-store', 'data'),
-    State('folder-dropdown-l1', 'value'),
-    State('folder-dropdown-l2', 'value'),  # Changed to State
+    State('selected-folder-path', 'data'),
     prevent_initial_call=True
 )
-def cache_processed_results(images, settings_store, selected_l1_folder, selected_l2_folder):
-    if not images or not selected_l2_folder or not selected_l1_folder:
+def cache_processed_results(images, settings_store, selected_folder_path):
+    if not images or not selected_folder_path:
         return {
             'folder_path': None,
             'settings': None,
@@ -951,10 +954,10 @@ def cache_processed_results(images, settings_store, selected_l1_folder, selected
             'visibility': 'hidden'
         }
     
-    folder_path = os.path.join(image_parent_folder, selected_l1_folder, selected_l2_folder)
+    folder_path = selected_folder_path
     
     # Standardize cache path construction
-    cache_folder = os.path.join(selected_l1_folder, selected_l2_folder)
+    cache_folder = os.path.basename(folder_path)
     point_x = settings_store['Segmentation']['point_x']
     point_y = settings_store['Segmentation']['point_y']
     seg_cache_folder = os.path.join(
@@ -1017,7 +1020,7 @@ def cache_processed_results(images, settings_store, selected_l1_folder, selected
         probs = wci_result[0].probs.data.cpu().numpy()
         overall_score = 1 * probs[0] + 0.5 * probs[1] + 0.0 * probs[2]
         overall_color = np.mean(wci_result[0].orig_img, axis=(0, 1)).astype(np.uint8)
-        _, closest_name = get_colour_name(overall_color)
+        actual_name, closest_name = get_colour_name(overall_color)
         
         current_state['results'][img_name]['water_clarity_index'] = {
             'score': float(overall_score),
@@ -1050,12 +1053,11 @@ def clear_image_cache(folder_l1, folder_l2, settings):
     Output('download-results', 'data'),
     Input('save-results-button', 'n_clicks'),
     State('processed-results-cache', 'data'),
-    State('folder-dropdown-l1', 'value'),
-    State('folder-dropdown-l2', 'value'),
+    State('selected-folder-path', 'data'),
     State('toggle-state', 'data'),
     prevent_initial_call=True
 )
-def download_results(n_clicks, results_cache, folder_l1, folder_l2, toggle_state):
+def download_results(n_clicks, results_cache, selected_folder_path, toggle_state):
     if not n_clicks or not results_cache or not results_cache['results']:
         return None
     
@@ -1076,7 +1078,7 @@ def download_results(n_clicks, results_cache, folder_l1, folder_l2, toggle_state
         ])
     
     elif active_toggle == 'Segmentation':
-        baseline = get_baseline(folder_l1)
+        baseline = get_baseline_folder(selected_folder_path)
         if baseline is None and results_cache['results']:
             first_image = next(iter(results_cache['results']))
             baseline = results_cache['results'][first_image]['segmentation']['area']
@@ -1102,7 +1104,8 @@ def download_results(n_clicks, results_cache, folder_l1, folder_l2, toggle_state
         ])
     
     # Generate filename
-    filename = f"{folder_l1}_{folder_l2}_{active_toggle.replace(' ', '_')}_results.csv"
+    folder_name = os.path.basename(selected_folder_path)
+    filename = f"{folder_name}_{active_toggle.replace(' ', '_')}_results.csv"
     
     return dcc.send_data_frame(df.to_csv, filename, index=False, float_format='%.2f')
 
@@ -1140,13 +1143,14 @@ def update_save_button_state(toggle_state):
 # Modify the initialize_baselines callback
 @app.callback(
     Output('baselines-store', 'data'),
-    Input('folder-dropdown-l1', 'value'),
-    Input('parent-folder-input', 'value'),  # Add parent folder input
+    Input('selected-folder-path', 'data'),
     prevent_initial_call=True
 )
-def initialize_baselines(level1_folder, parent_folder):
-    if not level1_folder or not parent_folder:
+def initialize_baselines(selected_folder_path):
+    if not selected_folder_path:
         return {}
+    
+    # Just load all baselines
     return load_baselines()
 
 # Modify the handle_baseline_setting callback
@@ -1156,15 +1160,14 @@ def initialize_baselines(level1_folder, parent_folder):
     Output('analysis-plot', 'figure', allow_duplicate=True),
     Input('set-baseline-button', 'n_clicks'),
     Input('toggle-state', 'data'),
-    State('parent-folder-input', 'value'),  # Add parent folder state
-    State('folder-dropdown-l1', 'value'),
+    State('selected-folder-path', 'data'),
     State('current-images', 'data'),
     State('current-index', 'data'),
     State('processed-results-cache', 'data'),
     State('baselines-store', 'data'),
     prevent_initial_call=True
 )
-def handle_baseline_setting(n_clicks, toggle_state, parent_folder, level1_folder, images, 
+def handle_baseline_setting(n_clicks, toggle_state, selected_folder_path, images, 
                           current_index, results_cache, current_baselines):
     ctx = dash.callback_context
     trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
@@ -1173,8 +1176,7 @@ def handle_baseline_setting(n_clicks, toggle_state, parent_folder, level1_folder
     button_disabled = (not toggle_state or 
                       toggle_state['active'] != 'Segmentation' or 
                       not images or 
-                      not level1_folder or 
-                      not parent_folder or 
+                      not selected_folder_path or 
                       not results_cache or 
                       not results_cache['results'])
     
@@ -1185,13 +1187,13 @@ def handle_baseline_setting(n_clicks, toggle_state, parent_folder, level1_folder
         current_image = images[current_index]
         if current_image in results_cache['results']:
             current_area = results_cache['results'][current_image]['segmentation']['area']
-            set_baseline(parent_folder, level1_folder, current_area)  # Updated to include parent_folder
+            set_baseline_folder(selected_folder_path, current_area)
             current_baselines = load_baselines()
             
             # Create updated plot
             analysis_fig = create_analysis_plot(
                 results_cache, images, current_index, toggle_state, current_area,
-                parent_folder, level1_folder  # Add these arguments
+                selected_folder_path
             )
     
     return current_baselines, button_disabled, analysis_fig
@@ -1229,7 +1231,7 @@ def update_baseline_button_style(toggle_state):
 
 # Modify the create_analysis_plot function to handle the new baseline lookup
 def create_analysis_plot(results_cache, images, current_index, toggle_state, baseline=None,
-                        parent_folder=None, level1_folder=None):
+                        selected_folder_path=None):
     analysis_fig = make_subplots(specs=[[{"secondary_y": True}]])
     
     if results_cache and results_cache['results']:
@@ -1276,8 +1278,8 @@ def create_analysis_plot(results_cache, images, current_index, toggle_state, bas
         
         # If baseline wasn't provided, try to get it from the store
         if baseline is None and results_cache and results_cache['results']:
-            if parent_folder and level1_folder:
-                baseline = get_baseline(parent_folder, level1_folder)
+            if selected_folder_path:
+                baseline = get_baseline_folder(selected_folder_path)
             if baseline is None and results_cache['results']:
                 first_image = next(iter(results_cache['results']))
                 baseline = results_cache['results'][first_image]['segmentation']['area']
@@ -1340,7 +1342,7 @@ def create_analysis_plot(results_cache, images, current_index, toggle_state, bas
 
         # Update layout
         analysis_fig.update_layout(
-            title='Multi-Model Analysis',
+            title='Multi-Model Analysis Results',
             xaxis_title='Image Index',
             hovermode='x unified',
             showlegend=True,
@@ -1378,6 +1380,115 @@ app.clientside_callback(
     Input('loading-screen', 'style'),
     prevent_initial_call=True
 )
+
+# Replace the folder selection callbacks with new ones
+@app.callback(
+    Output("folder-selection-modal", "is_open"),
+    [Input("folder-select-button", "n_clicks"), Input("close-folder-modal", "n_clicks"), 
+     Input("confirm-folder-selection", "n_clicks")],
+    [State("folder-selection-modal", "is_open")],
+)
+def toggle_folder_modal(n1, n2, n3, is_open):
+    if n1 or n2 or n3:
+        return not is_open
+    return is_open
+
+@app.callback(
+    Output("folder-structure", "children"),
+    Input("folder-input", "value"),
+)
+def update_folder_structure(folder_path):
+    if not folder_path or not os.path.exists(folder_path):
+        return html.Div("Folder not found", style={"color": "red"})
+    
+    try:
+        # Get all subdirectories and files
+        items = os.listdir(folder_path)
+        dirs = [item for item in items if os.path.isdir(os.path.join(folder_path, item))]
+        files = [item for item in items if os.path.isfile(os.path.join(folder_path, item)) 
+                and item.lower().endswith(('.jpg', '.jpeg', '.png', '.gif'))]
+        
+        return html.Div([
+            html.P(f"Found {len(dirs)} folders and {len(files)} images"),
+            html.Div([
+                html.Strong("Folders:"),
+                html.Ul([html.Li(d) for d in dirs[:5]] + 
+                       ([html.Li(f"... and {len(dirs) - 5} more")] if len(dirs) > 5 else [])),
+            ]) if dirs else html.Div("No subfolders found"),
+            html.Div([
+                html.Strong("Images:"),
+                html.Ul([html.Li(f) for f in files[:5]] + 
+                       ([html.Li(f"... and {len(files) - 5} more")] if len(files) > 5 else [])),
+            ]) if files else html.Div("No images found"),
+        ])
+    except Exception as e:
+        return html.Div(f"Error: {str(e)}", style={"color": "red"})
+
+@app.callback(
+    Output("selected-folder-path", "data"),
+    Output('current-images', 'data', allow_duplicate=True),
+    Output('current-index', 'data', allow_duplicate=True),
+    Output('loading-screen', 'style', allow_duplicate=True),
+    Input("confirm-folder-selection", "n_clicks"),
+    State("folder-input", "value"),
+    prevent_initial_call=True
+)
+def update_selected_folder(n_clicks, folder_path):
+    if not n_clicks or not folder_path or not os.path.exists(folder_path):
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
+    
+    # Update global variable
+    global image_parent_folder
+    image_parent_folder = folder_path
+    
+    # Get images from the selected folder
+    images = get_images(folder_path)
+    
+    # Show loading screen
+    return folder_path, images, 0, {
+        'display': 'flex',
+        'opacity': '1',
+        'visibility': 'visible'
+    }
+
+# Add a callback to update the selected folder display
+@app.callback(
+    Output("selected-folder-display", "children"),
+    Input("selected-folder-path", "data"),
+)
+def update_selected_folder_display(selected_folder_path):
+    if not selected_folder_path:
+        return html.Div("No folder selected")
+    
+    # Count images in the folder
+    try:
+        image_count = len(get_images(selected_folder_path))
+        return html.Div([
+            html.P(f"Selected folder: {selected_folder_path}", style={'wordBreak': 'break-word'}),
+            html.P(f"Found {image_count} images")
+        ])
+    except Exception as e:
+        return html.Div([
+            html.P(f"Selected folder: {selected_folder_path}", style={'wordBreak': 'break-word'}),
+            html.P(f"Error: {str(e)}", style={"color": "red"})
+        ])
+
+# Define functions to handle baselines with the new folder structure
+def get_baseline_folder(folder_path):
+    """Get the baseline for a specific folder"""
+    baselines = load_baselines()
+    folder_key = os.path.basename(folder_path)
+    return baselines.get(folder_key)
+
+def set_baseline_folder(folder_path, value):
+    """Set the baseline for a specific folder"""
+    baselines = load_baselines()
+    folder_key = os.path.basename(folder_path)
+    baselines[folder_key] = value
+    
+    # Save the updated baselines
+    with open('baselines.json', 'w') as f:
+        json.dump(baselines, f)
 
 if __name__ == '__main__':
 
