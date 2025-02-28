@@ -54,5 +54,8 @@
         "description": "Toggles the visibility of the water clarity score and color information on the image."
       }
     }
+  },
+  "project_info": {
+    "description": "Eyes on the Water TV is a collaborative project that uses AI-powered computer vision to monitor water quality and detect changes in aquatic environments. The system analyzes images from fixed cameras to track objects, measure water clarity, and segment water areas, helping researchers and environmental agencies identify potential issues like algal blooms, pollution events, or ecosystem changes. This tool supports early detection of water quality problems and facilitates data-driven environmental management decisions."
   }
 } 

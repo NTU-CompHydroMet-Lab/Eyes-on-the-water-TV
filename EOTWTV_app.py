@@ -323,7 +323,11 @@ app.layout = html.Div([
     html.Div(
         children=[
             html.Div([
-                html.H1("Eyes on the Water TV", style={'margin': '0'}),
+                html.Div([
+                    html.H1("Eyes on the Water TV", style={'margin': '0'}),
+                    html.I(className="fas fa-info-circle", id="project-info-icon", 
+                           style={"marginLeft": "10px", "color": "#17a2b8", "cursor": "pointer", "fontSize": "24px"}),
+                ], style={'display': 'flex', 'alignItems': 'center'}),
                 html.Img(src='assets/Cover_Logos.png', style={'height': '50px'}),
             ], className='title-section', style={
                 'display': 'flex',
@@ -333,6 +337,19 @@ app.layout = html.Div([
                 'padding': '5px',
                 'backgroundColor': '#f8f9fa',
             }),
+            # Add tooltip for project info
+            dbc.Tooltip(
+                id="project-info-tooltip",
+                target="project-info-icon",
+                placement="bottom",
+                style={
+                    "maxWidth": "50rem",
+                    "backgroundColor": "#17a2b8",
+                    "color": "white",
+                    "fontSize": "0.9rem",
+                    "padding": "10px",
+                }
+            ),
         ], className='header-title'
     ),
 
@@ -345,7 +362,10 @@ app.layout = html.Div([
                 # Analysis plot
                 dcc.Graph(
                     id='analysis-plot',
-                    config={'displayModeBar': True},
+                    config={
+                        'displayModeBar': True,
+                        'modeBarButtonsToRemove': ['lasso2d', 'autoScale2d']
+                    },
                     style={
                         'height': '30vh',
                         'width': '100%',
@@ -439,7 +459,14 @@ app.layout = html.Div([
                     dbc.Tooltip(
                         TOOLTIPS["analysis_modes"]["object_detection"]["description"],
                         target="od-info-icon",
-                        placement="right"
+                        placement="right",
+                        style={
+                            "maxWidth": "20rem",
+                            "backgroundColor": "#17a2b8",
+                            "color": "white",
+                            "fontSize": "0.9rem",
+                            "padding": "8px",
+                        }
                     ),
                     
                     html.Div([
@@ -455,7 +482,14 @@ app.layout = html.Div([
                     dbc.Tooltip(
                         TOOLTIPS["analysis_modes"]["segmentation"]["description"],
                         target="seg-info-icon",
-                        placement="right"
+                        placement="right",
+                        style={
+                            "maxWidth": "20rem",
+                            "backgroundColor": "#17a2b8",
+                            "color": "white",
+                            "fontSize": "0.9rem",
+                            "padding": "8px",
+                        }
                     ),
                     
                     html.Div([
@@ -471,7 +505,14 @@ app.layout = html.Div([
                     dbc.Tooltip(
                         TOOLTIPS["analysis_modes"]["water_clarity_index"]["description"],
                         target="wci-info-icon",
-                        placement="right"
+                        placement="right",
+                        style={
+                            "maxWidth": "20rem",
+                            "backgroundColor": "#17a2b8",
+                            "color": "white",
+                            "fontSize": "0.9rem",
+                            "padding": "8px",
+                        }
                     ),
                 ], style={'marginBottom': '20px'}),
                 
@@ -505,6 +546,7 @@ app.layout = html.Div([
                             target="set-baseline-button",
                             placement="top",
                             style={
+                                "maxWidth": "15rem",
                                 "backgroundColor": "#6c757d",
                                 "color": "white",
                                 "fontSize": "0.9rem",
@@ -535,6 +577,7 @@ app.layout = html.Div([
                             target="set-avg-baseline-button",
                             placement="top",
                             style={
+                                "maxWidth": "15rem",
                                 "backgroundColor": "#6c757d",
                                 "color": "white",
                                 "fontSize": "0.9rem",
@@ -771,6 +814,10 @@ def create_analysis_plot(results_cache, images, current_index, toggle_state, bas
                 y=-0.5,  # position below the plot
                 xanchor="center",
                 x=0.5    # centered horizontally
+            ),
+            # Disable specific modebar buttons
+            modebar=dict(
+                remove=['lasso2d', 'autoScale2d']
             )
         )
         
@@ -807,7 +854,11 @@ def create_analysis_plot(results_cache, images, current_index, toggle_state, bas
                 'x': 0.5,
                 'y': 0.5,
                 'showarrow': False
-            }]
+            }],
+            # Disable specific modebar buttons even for empty plot
+            modebar=dict(
+                remove=['lasso2d', 'autoScale2d']
+            )
         )
     
     return analysis_fig
@@ -1007,7 +1058,14 @@ def update_settings_container(toggle_state, current_settings):
                 dbc.Tooltip(
                     TOOLTIPS["settings"]["object_detection"]["confidence"]["description"],
                     target="confidence-info-icon",
-                    placement="right"
+                    placement="right",
+                    style={
+                        "maxWidth": "20rem",
+                        "backgroundColor": "#17a2b8",
+                        "color": "white",
+                        "fontSize": "0.9rem",
+                        "padding": "8px",
+                    }
                 ),
                 
                 dcc.Slider(
@@ -1036,7 +1094,14 @@ def update_settings_container(toggle_state, current_settings):
                 dbc.Tooltip(
                     TOOLTIPS["settings"]["object_detection"]["show_overlay"]["description"],
                     target="od-overlay-info-icon",
-                    placement="right"
+                    placement="right",
+                    style={
+                        "maxWidth": "20rem",
+                        "backgroundColor": "#17a2b8",
+                        "color": "white",
+                        "fontSize": "0.9rem",
+                        "padding": "8px",
+                    }
                 ),
             ])
         ]), {'display': 'block'}
@@ -1053,7 +1118,14 @@ def update_settings_container(toggle_state, current_settings):
                 dbc.Tooltip(
                     TOOLTIPS["settings"]["segmentation"]["point_x"]["description"],
                     target="point-x-info-icon",
-                    placement="right"
+                    placement="right",
+                    style={
+                        "maxWidth": "20rem",
+                        "backgroundColor": "#17a2b8",
+                        "color": "white",
+                        "fontSize": "0.9rem",
+                        "padding": "8px",
+                    }
                 ),
                 
                 dcc.Slider(
@@ -1076,7 +1148,14 @@ def update_settings_container(toggle_state, current_settings):
                 dbc.Tooltip(
                     TOOLTIPS["settings"]["segmentation"]["point_y"]["description"],
                     target="point-y-info-icon",
-                    placement="right"
+                    placement="right",
+                    style={
+                        "maxWidth": "20rem",
+                        "backgroundColor": "#17a2b8",
+                        "color": "white",
+                        "fontSize": "0.9rem",
+                        "padding": "8px",
+                    }
                 ),
                 
                 dcc.Slider(
@@ -1105,7 +1184,14 @@ def update_settings_container(toggle_state, current_settings):
                 dbc.Tooltip(
                     TOOLTIPS["settings"]["segmentation"]["show_overlay"]["description"],
                     target="seg-overlay-info-icon",
-                    placement="right"
+                    placement="right",
+                    style={
+                        "maxWidth": "20rem",
+                        "backgroundColor": "#17a2b8",
+                        "color": "white",
+                        "fontSize": "0.9rem",
+                        "padding": "8px",
+                    }
                 ),
             ])
         ]), {'display': 'block'}
@@ -1759,6 +1845,14 @@ def calculate_average_area(results_cache):
         return None
     
     return sum(areas) / len(areas)
+
+# Add callback to update the project info tooltip
+@app.callback(
+    Output("project-info-tooltip", "children"),
+    Input("project-info-icon", "id")
+)
+def update_project_info_tooltip(_):
+    return TOOLTIPS["project_info"]["description"]
 
 if __name__ == '__main__':
 
