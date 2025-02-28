@@ -349,9 +349,27 @@ app.layout = html.Div([
                     style={
                         'height': '30vh',
                         'width': '100%',
-                        'marginBottom': '20px'
+                        'marginBottom': '10px'
                     }
                 ),
+                # Plot controls
+                html.Div([
+                    html.Div([
+                        html.Label("Select data to display:", style={'fontWeight': 'bold', 'marginRight': '10px'}),
+                        dcc.Checklist(
+                            id='plot-controls',
+                            options=[
+                                {'label': 'Object Detection', 'value': 'object_detection'},
+                                {'label': 'Segmentation Area', 'value': 'segmentation'},
+                                {'label': 'Water Clarity Score', 'value': 'water_clarity'},
+                                {'label': 'Baseline', 'value': 'baseline'}
+                            ],
+                            value=['object_detection', 'segmentation', 'water_clarity', 'baseline'],
+                            inline=True,
+                            style={'display': 'flex', 'gap': '15px'}
+                        ),
+                    ], style={'display': 'flex', 'alignItems': 'center', 'justifyContent': 'center', 'marginBottom': '20px'})
+                ]),
                 # Image display
                 html.Img(
                     id='displayed-image',
@@ -580,6 +598,8 @@ app.layout = html.Div([
     dcc.Store(id='baselines-store', data={}),
     # Add a store for selected folder path
     dcc.Store(id='selected-folder-path', data=image_parent_folder),
+    # Add a store for plot controls
+    dcc.Store(id='plot-controls-state', data=['object_detection', 'segmentation', 'water_clarity', 'baseline']),
     # Add a modal for folder selection
     dbc.Modal(
         [
@@ -610,61 +630,118 @@ models = model_init()
 
 # Modify the create_analysis_plot function to handle the new baseline lookup
 def create_analysis_plot(results_cache, images, current_index, toggle_state, baseline=None,
-                        selected_folder_path=None):
-    analysis_fig = make_subplots(specs=[[{"secondary_y": True}]])
+                        selected_folder_path=None, plot_controls=None):
+    # Default to showing all if no controls provided
+    if plot_controls is None:
+        plot_controls = ['object_detection', 'segmentation', 'water_clarity', 'baseline']
     
-    if results_cache and results_cache['results']:
+    # Create a figure with multiple subplots - one for each active y-axis
+    subplot_specs = []
+    
+    # Determine which y-axes we need
+    need_od_axis = 'object_detection' in plot_controls
+    need_wci_axis = 'water_clarity' in plot_controls
+    need_seg_axis = 'segmentation' in plot_controls
+    
+    # Create subplot specs based on active axes
+    if need_od_axis and need_wci_axis:
+        # Both object detection and water clarity use the left y-axis
+        subplot_specs = [[{"secondary_y": need_seg_axis}]]
+    elif need_seg_axis:
+        # Only segmentation axis needed
+        subplot_specs = [[{"secondary_y": True}]]
+    else:
+        # Only primary axis needed
+        subplot_specs = [[{"secondary_y": False}]]
+    
+    analysis_fig = make_subplots(specs=subplot_specs)
+    
+    if results_cache and results_cache['results'] and images:
         x_values = list(range(len(images)))
         
         # Object Detection trace (primary y-axis)
-        y_od = [results_cache['results'][img]['object_detection']['detections'] for img in images]
-        analysis_fig.add_trace(
-            go.Scatter(
-                x=x_values,
-                y=y_od,
-                name='Object detected',
-                line=dict(color='blue'),
-                hovertemplate='Image %{x}<br>Detections: %{y}<extra></extra>'
-            ),
-            secondary_y=False
-        )
+        if 'object_detection' in plot_controls:
+            y_od = [results_cache['results'][img]['object_detection']['detections'] for img in images]
+            analysis_fig.add_trace(
+                go.Scatter(
+                    x=x_values,
+                    y=y_od,
+                    name='Object detected',
+                    line=dict(color='blue'),
+                    hovertemplate='Image %{x}<br>Detections: %{y}<extra></extra>'
+                ),
+                secondary_y=False
+            )
+            
+            # Add current image marker for object detection
+            analysis_fig.add_trace(
+                go.Scatter(
+                    x=[current_index],
+                    y=[y_od[current_index]],
+                    mode='markers',
+                    marker=dict(color='blue', size=12, symbol='x'),
+                    name='Current Detection',
+                    showlegend=False
+                ),
+                secondary_y=False
+            )
         
         # Segmentation trace (secondary y-axis)
-        y_seg = [results_cache['results'][img]['segmentation']['area'] for img in images]
-        analysis_fig.add_trace(
-            go.Scatter(
-                x=x_values,
-                y=y_seg,
-                name='Segmented area',
-                line=dict(color='red'),
-                hovertemplate='Image %{x}<br>Area: %{y:,.0f} pixels<extra></extra>'
-            ),
-            secondary_y=True
-        )
+        if 'segmentation' in plot_controls:
+            y_seg = [results_cache['results'][img]['segmentation']['area'] for img in images]
+            analysis_fig.add_trace(
+                go.Scatter(
+                    x=x_values,
+                    y=y_seg,
+                    name='Segmented area',
+                    line=dict(color='red'),
+                    hovertemplate='Image %{x}<br>Area: %{y:,.0f} pixels<extra></extra>'
+                ),
+                secondary_y=True
+            )
+            
+            # Add current image marker for segmentation
+            analysis_fig.add_trace(
+                go.Scatter(
+                    x=[current_index],
+                    y=[y_seg[current_index]],
+                    mode='markers',
+                    marker=dict(color='red', size=12, symbol='x'),
+                    name='Current Area',
+                    showlegend=False
+                ),
+                secondary_y=True
+            )
         
         # Water Clarity Index trace (primary y-axis)
-        y_wci = [results_cache['results'][img]['water_clarity_index']['score'] for img in images]
-        analysis_fig.add_trace(
-            go.Scatter(
-                x=x_values,
-                y=y_wci,
-                name='Water clarity score',
-                line=dict(color='green'),
-                hovertemplate='Image %{x}<br>Score: %{y:.2f}<extra></extra>'
-            ),
-            secondary_y=False
-        )
+        if 'water_clarity' in plot_controls:
+            y_wci = [results_cache['results'][img]['water_clarity_index']['score'] for img in images]
+            analysis_fig.add_trace(
+                go.Scatter(
+                    x=x_values,
+                    y=y_wci,
+                    name='Water clarity score',
+                    line=dict(color='green'),
+                    hovertemplate='Image %{x}<br>Score: %{y:.2f}<extra></extra>'
+                ),
+                secondary_y=False
+            )
+            
+            # Add current image marker for water clarity
+            analysis_fig.add_trace(
+                go.Scatter(
+                    x=[current_index],
+                    y=[y_wci[current_index]],
+                    mode='markers',
+                    marker=dict(color='green', size=12, symbol='x'),
+                    name='Current Clarity',
+                    showlegend=False
+                ),
+                secondary_y=False
+            )
         
-        # If baseline wasn't provided, try to get it from the store
-        if baseline is None and results_cache and results_cache['results']:
-            if selected_folder_path:
-                baseline = get_baseline_folder(selected_folder_path)
-            if baseline is None and results_cache['results']:
-                first_image = next(iter(results_cache['results']))
-                baseline = results_cache['results'][first_image]['segmentation']['area']
-        
-        # Add baseline if provided
-        if baseline is not None:
+        # Add baseline if provided and requested
+        if baseline is not None and 'baseline' in plot_controls and 'segmentation' in plot_controls:
             analysis_fig.add_trace(
                 go.Scatter(
                     x=[0, len(images)-1],
@@ -678,46 +755,6 @@ def create_analysis_plot(results_cache, images, current_index, toggle_state, bas
                 ),
                 secondary_y=True
             )
-        
-        # Always add all three current image markers
-        # Object Detection marker
-        analysis_fig.add_trace(
-            go.Scatter(
-                x=[current_index],
-                y=[y_od[current_index]],
-                mode='markers',
-                marker=dict(color='blue', size=12, symbol='x'),
-                name='Current Detection',
-                showlegend=False
-            ),
-            secondary_y=False
-        )
-        
-        # Segmentation marker
-        analysis_fig.add_trace(
-            go.Scatter(
-                x=[current_index],
-                y=[y_seg[current_index]],
-                mode='markers',
-                marker=dict(color='red', size=12, symbol='x'),
-                name='Current Area',
-                showlegend=False
-            ),
-            secondary_y=True
-        )
-        
-        # Water Clarity marker
-        analysis_fig.add_trace(
-            go.Scatter(
-                x=[current_index],
-                y=[y_wci[current_index]],
-                mode='markers',
-                marker=dict(color='green', size=12, symbol='x'),
-                name='Current Clarity',
-                showlegend=False
-            ),
-            secondary_y=False
-        )
 
         # Update layout
         analysis_fig.update_layout(
@@ -737,9 +774,41 @@ def create_analysis_plot(results_cache, images, current_index, toggle_state, bas
             )
         )
         
-        # Update y-axes titles
-        analysis_fig.update_yaxes(title_text="Detections / Water clarity score", secondary_y=False)
-        analysis_fig.update_yaxes(title_text="Segmented area (pixels)", secondary_y=True)
+        # Update y-axes titles based on what's being displayed
+        if need_od_axis or need_wci_axis:
+            # Determine the appropriate title for the primary y-axis
+            primary_title = []
+            if need_od_axis:
+                primary_title.append("Detections")
+            if need_wci_axis:
+                primary_title.append("Water clarity score")
+            
+            analysis_fig.update_yaxes(
+                title_text=" / ".join(primary_title), 
+                secondary_y=False,
+                showgrid=True
+            )
+        
+        if need_seg_axis:
+            analysis_fig.update_yaxes(
+                title_text="Segmented area (pixels)", 
+                secondary_y=True,
+                showgrid=True
+            )
+    else:
+        # Empty plot with message
+        analysis_fig.update_layout(
+            xaxis={'showgrid': False, 'zeroline': False, 'visible': False},
+            yaxis={'showgrid': False, 'zeroline': False, 'visible': False},
+            annotations=[{
+                'text': 'No data available',
+                'xref': 'paper',
+                'yref': 'paper',
+                'x': 0.5,
+                'y': 0.5,
+                'showarrow': False
+            }]
+        )
     
     return analysis_fig
 
@@ -781,12 +850,13 @@ def update_selected_folder(n_clicks, selected_folder_path):
     Input('settings-store', 'data'),
     Input('processed-results-cache', 'data'),
     Input('analysis-plot', 'clickData'),
+    Input('plot-controls', 'value'),
     State('selected-folder-path', 'data'),
     prevent_initial_call=True
 )
 def update_image(images, current_index, prev_clicks, next_clicks, 
                 toggle_state, settings_store, results_cache,
-                click_data, selected_folder_path):
+                click_data, plot_controls, selected_folder_path):
     ctx = dash.callback_context
     trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
     
@@ -835,7 +905,7 @@ def update_image(images, current_index, prev_clicks, next_clicks,
     
     analysis_fig = create_analysis_plot(
         results_cache, images, current_index, toggle_state, baseline,
-        selected_folder_path
+        selected_folder_path, plot_controls
     )
 
     # Get current image path and basic info
@@ -1388,10 +1458,11 @@ def initialize_baselines(selected_folder_path):
     State('current-index', 'data'),
     State('processed-results-cache', 'data'),
     State('baselines-store', 'data'),
+    State('plot-controls', 'value'),
     prevent_initial_call=True
 )
 def handle_baseline_setting(n_clicks, avg_n_clicks, toggle_state, selected_folder_path, images, 
-                          current_index, results_cache, current_baselines):
+                          current_index, results_cache, current_baselines, plot_controls):
     ctx = dash.callback_context
     trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
     
@@ -1444,7 +1515,7 @@ def handle_baseline_setting(n_clicks, avg_n_clicks, toggle_state, selected_folde
             # Create updated plot
             analysis_fig = create_analysis_plot(
                 results_cache, images, current_index, toggle_state, current_area,
-                selected_folder_path
+                selected_folder_path, plot_controls
             )
     
     elif trigger_id == 'set-avg-baseline-button' and avg_n_clicks and segmentation_active:
@@ -1456,7 +1527,7 @@ def handle_baseline_setting(n_clicks, avg_n_clicks, toggle_state, selected_folde
             # Create updated plot
             analysis_fig = create_analysis_plot(
                 results_cache, images, current_index, toggle_state, avg_area,
-                selected_folder_path
+                selected_folder_path, plot_controls
             )
     
     # Get current baseline type AFTER any changes from button clicks
@@ -1473,18 +1544,18 @@ def handle_baseline_setting(n_clicks, avg_n_clicks, toggle_state, selected_folde
         # Set styles based on current baseline type
         if baseline_type == 'single':
             single_button_style = active_style
-            avg_button_style = inactive_style
+            avg_button_style = available_style
             single_button_disabled = False
             avg_button_disabled = False
         elif baseline_type == 'average':
-            single_button_style = inactive_style
+            single_button_style = available_style
             avg_button_style = active_style
             single_button_disabled = False
             avg_button_disabled = False
         else:
             # No baseline set yet
-            single_button_style = inactive_style
-            avg_button_style = inactive_style
+            single_button_style = available_style
+            avg_button_style = available_style
             single_button_disabled = False
             avg_button_disabled = False
     
